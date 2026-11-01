@@ -7,6 +7,12 @@ GEOMETRY
     at PX_PER_FT. Stairs and escalators are the VCEs. Where the drawn walls completely close a VCE mouth, an opening is cut
     through them (OPEN_BLOCKED_VCE_MOUTHS). VCEs that are still unreachable (e.g. the sealed east end of platform 7) are
     drawn gray and left closed. Platforms 1 and 2 are one U-shaped polygon in the file and are split into its two strips.
+    Features whose "level" is not "platform" (concourse-level stairs, elevators, walls) and features marked "status":
+    "planned" (on the plans but not built) are ignored (PLATFORM_LEVEL_ONLY, SKIP_PLANNED); start-up prints how many.
+    A stair/escalator polygon may carry "mouth": "west" | "east" | "north" | "south", the end where it meets the open platform
+    (riders step on and off the platform there). Without it the end is worked out from the surrounding walls. The other end is
+    where riders leave the platform: alighting riders vanish there and boarding riders appear. The two flights of platform 5's
+    T-shaped stair are drawn as two VCEs for this reason; the stem of the T is overhead (level "concourse") and is ignored.
 
 TRAINS
     NJ Transit MultiLevel coaches, 85 ft x 10 ft (published). Door positions and width are ESTIMATES (DOOR_POSITIONS_FT,
@@ -16,11 +22,16 @@ TRAINS
 PASSENGERS
     Alighting (green): each rider picks one of the doors of their own car - walking distance to the stairs/escalators, plus
     the queue already at that door, plus noise - and walks to the nearest stair/escalator ('eastern preference' bias applies).
-    Departing (blue): step off the stairs/escalators, pick a door of their train that is no longer letting people off, board.
+    Departing (blue): appear where the alighting riders vanish (the exit line at the far end of a stair/escalator), walk to
+    its mouth, step off onto the platform, pick a door of their train that is no longer letting people off, board
+    (DEPARTING_START_AT_VCE_EXIT). On a stair/escalator the two directions each get their own lane, so riders going
+    up and down never block each other.
 
 CROWD-MOVEMENT ADDITIONS to the original movement rule (each can be switched off with the constant named):
     PATIENCE_TICKS                   riders who stop making progress stop avoiding crowds (kills standoff rings)
     SWAP_OPPOSING_RIDERS             riders blocking each other head-on, who would both get closer, trade places
+    DEADLOCK_SWAP_TICKS              a rider stuck for ~50 s trades places with an opposing rider whatever the rules above say
+    DEADLOCK_SQUEEZE_TICKS           a boarding rider stuck that long also accepts less personal space (empties jammed pockets)
     KEEP_CLEAR_PX / DEPARTING_MAX_CROWD   boarding riders keep clear of doors still letting people off, and only step off
                                      the stairs into uncrowded cells
     Optional, off by default: SQUEEZE_TICKS, MOUTH_SPACING_PX, STAIR_ENTRY_NEEDS_PLATFORM_ROOM = False.
@@ -55,6 +66,8 @@ import cv2
 GEOJSON_FILE = "shapes_pcip_phase_1.geojson"   # whole-station geometry in feet (downloaded automatically if missing)
 GEOJSON_URL = ("https://github.com/effective-transit-alliance/platform-crowd-model/raw/refs/heads/"
                "kkysen/per-vce/data/shapes_pcip_phase_1.geojson")
+PLATFORM_LEVEL_ONLY = True       # skip features whose "level" is not "platform" (concourse-level stairs, elevators, walls)
+SKIP_PLANNED = True              # skip features marked "status": "planned" (on the plans, not built)
 PLATFORM = 5                     # platform simulated at start-up (1-11); changeable in the GUI (applies on Reset)
 PX_PER_FT = 2.28                 # Raster scale (pixels per foot), same scale the PNG used
 INCLUDE_UNNAMED_VCES = True      # stairs/escalators with no vce_name in the GeoJSON are still modelled as VCEs
@@ -69,7 +82,7 @@ CAR_WIDTH_FT = 10.0              # body width (published: 10 ft 0 in)
 CAR_COUPLER_GAP_FT = 1.5         # visual gap drawn between neighbouring car bodies (approximate)
 CAR_PLATFORM_GAP_FT = 0.5        # gap between the car side and the platform edge (approximate)
 DOOR_WIDTH_FT = 3.0              # single-width side door (approximate; ADA minimum clear opening is 32 in)
-DOOR_POSITIONS_FT = (10.0, 75.0) # door centres measured from the car's west end (approximate: one per end)
+DOOR_POSITIONS_FT = (3.0, 18.0, 67.0, 82.0) # door centres measured from the car's west end (approximate: one per end)
 DOORS_PER_CAR = len(DOOR_POSITIONS_FT)
 MIN_DOOR_DEPTH_PX = 10           # A door is only used if at least this much open platform (px, ~4.4 ft) lies in front of it;
                                  # trains berthed beside a wall or a narrow sliver of platform don't open onto it
@@ -86,10 +99,16 @@ MAX_PAX_PER_DOOR = 45            # Upper end of the alighting slider (per door)
 MAX_DEPARTING_PER_DOOR = 30      # Upper end of the departing slider (per door)
 SPAWN_RATE_PER_SECOND = 0.8      # Maximum passengers released per second per door
 MAX_SPAWN_RATE = 1.0             # Upper end of the spawn-rate slider
-DEPART_RATE = 4.0                # Departing passengers stepping off the stairs/escalators per second (per train)
+DEPART_RATE = 4.0                # Departing passengers appearing on the stairs/escalators per second (per train)
+DEPARTING_START_AT_VCE_EXIT = True   # True = boarding riders appear where alighting riders vanish (the exit line at the far end
+                                 # of each stair/escalator) and walk to the mouth. False = the old rule: they appear on the
+                                 # platform a few px beyond the mouth
 BOARDING_DELAY = 120             # Seconds after a train's arrival before its departing passengers start to appear
 DEPARTING_MAX_CROWD = 2          # A departing passenger only steps off the stairs into a cell with at most this many
                                  # neighbours (otherwise they wait on the stairs) - keeps stair mouths from locking up
+MOUTH_BACKLOG_MAX = 2            # A stair/escalator starts no new boarding rider while this many are already waiting at its
+                                 # mouth for room to step off (a stair backs up when the platform in front of it is full).
+                                 # Stops boarders piling into walled pockets in front of a mouth. 0 = off.
 # Alighting riders choose which door of their own car to leave by: a random-utility choice made when the train arrives.
 #   cost(door) = DOOR_PREF_WEIGHT * walking distance to the stairs/escalators (ft)
 #              + queue-length cost (riders already heading for that door) + logistic noise
@@ -110,6 +129,14 @@ SWAP_OPPOSING_RIDERS = True      # alighting and departing riders who block each
 PATIENCE_TICKS = 90              # A rider who makes no progress for this many moves (~10 s) stops avoiding crowds: the
                                  # crowding penalty fades linearly to zero. Prevents standoff rings around crowded stairs
                                  # and doors. 0 = off (the original behaviour: crowding is always avoided).
+DEADLOCK_SWAP_TICKS = 450        # A rider who has made no progress for this many moves (~50 s) and finds no ordinary swap
+                                 # partner swaps places with an opposing rider (alighting <-> boarding) however many riders
+                                 # are in the way and even across a keep-clear zone. Undoes head-on standoffs in narrow gaps
+                                 # (e.g. boarders walking west, alighters from a door still in use walking east, in a 4 ft
+                                 # wide gap). Never reached in normal flow. 0 = off.
+DEADLOCK_SQUEEZE_TICKS = 30      # A BOARDING rider jammed that long (DEADLOCK_SWAP_TICKS) also accepts 1 px less personal
+                                 # space, and 1 px less again per this many further moves, so a pocket whose only way out is a
+                                 # 1 ft gap (e.g. in front of a stair mouth) empties instead of locking up. 0 = off.
 # --- optional extras, OFF by default (they helped some platforms and hurt others in testing) ---
 SQUEEZE_TICKS = 0                # >0: a rider still stuck after PATIENCE_TICKS accepts 1 px less personal space per further
                                  # SQUEEZE_TICKS without progress (e.g. 30). 0 = off.
@@ -122,7 +149,7 @@ KEEP_CLEAR_PX = 4                # Boarding riders stay this many px clear of a 
 CONGESTED_THRESHOLD = 15         # A VCE card turns red when more than this many pax are inside it
 # ---- window ----
 FIG_W, FIG_H = 15.0, 11.5        # figure size (inches)
-DEFAULT_ZOOM = 1.5               # initial zoom (1 = whole platform length visible)
+DEFAULT_ZOOM = 1.0               # initial zoom (1 = whole platform length visible)
 MAX_VCE_CARDS = 18               # cards reserved for the VCE read-outs
 # ==========================================
 
@@ -185,12 +212,18 @@ def ensure_geojson(path=GEOJSON_FILE):
 
 
 def load_station(path=GEOJSON_FILE):
-    with open(ensure_geojson(path)) as fh:
+    path = ensure_geojson(path)
+    with open(path) as fh:
         data = json.load(fh)
     station = {'frame': data.get('frame', ''), 'polys': defaultdict(list), 'walls': []}
+    skipped = 0
     for f in data['features']:
         props, g = f.get('properties') or {}, f.get('geometry')
         if not g:
+            continue
+        if ((PLATFORM_LEVEL_ONLY and props.get('level', 'platform') != 'platform')
+                or (SKIP_PLANNED and props.get('status') == 'planned')):
+            skipped += 1                                   # not on the platform (concourse level) or not built yet
             continue
         if g['type'] == 'Polygon':
             rings = [np.asarray(r, dtype=float) for r in g['coordinates']]
@@ -202,7 +235,13 @@ def load_station(path=GEOJSON_FILE):
             if len(pts) >= 2:
                 b = (pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max())
                 station['walls'].append({'props': props, 'pts': pts, 'bbox': b})
+    print(f"Station geometry: {os.path.abspath(path)} - {skipped} of {len(data['features'])} features skipped "
+          f"(not platform level, or planned)")
     return station
+
+
+# "mouth" property of a stair/escalator polygon -> direction (x right = east, y down = south) its platform-side end faces
+MOUTH_DIRECTIONS = {'west': (-1.0, 0.0), 'east': (1.0, 0.0), 'north': (0.0, -1.0), 'south': (0.0, 1.0)}
 
 
 def _to_px(pts_ft, ox, oy):
@@ -329,7 +368,9 @@ def build_scene(station, pid):
             name = p['props'].get('vce_name', '') or ''
             if not name and not INCLUDE_UNNAMED_VCES and kind != 'elevator':
                 continue
-            vce_src.append({'kind': kind, 'name': name, 'ring': p['rings'][0], 'cx': cx})
+            mouth = str(p['props'].get('mouth') or '').strip().lower()      # optional: which end meets the open platform
+            vce_src.append({'kind': kind, 'name': name, 'ring': p['rings'][0], 'cx': cx,
+                            'mouth': mouth if mouth in MOUTH_DIRECTIONS else ''})
     vce_src.sort(key=lambda v: v['cx'])                    # number west (1) -> east (N)
     labeled = np.zeros((H, W), np.int16)
     for i, v in enumerate(vce_src, start=1):
@@ -343,7 +384,7 @@ def build_scene(station, pid):
         v = vce_src[old_id - 1]
         ring_px = _to_px(v['ring'], ox, oy)
         (_, _), (rw, rh), _ = cv2.minAreaRect(ring_px.astype(np.float32))
-        vce_info[new_id] = {'name': v['name'], 'kind': v['kind'], 'ring_px': ring_px,
+        vce_info[new_id] = {'name': v['name'], 'kind': v['kind'], 'ring_px': ring_px, 'mouth': v['mouth'],
                             'width_ft': min(rw, rh) / PX_PER_FT, 'length_ft': max(rw, rh) / PX_PER_FT}
         geom['vces'].append((new_id, v['kind'], ring_px))
     vce_mask = labeled_vces > 0
@@ -415,12 +456,14 @@ def analyze_vces(scene):
     """For every VCE decide where its platform-side mouth is, and make sure that mouth is actually reachable.
 
     * Candidate mouths are the two ends along the stair/escalator's long axis (plus the two short-axis ends for
-      near-square stairs). The 'landing' end - the one whose side walls run on past the polygon - is preferred.
+      near-square stairs). The 'landing' end - the one whose side walls run on past the polygon - is preferred. A polygon
+      whose GeoJSON properties say "mouth": "west" (or east / north / south) only considers the end facing that way.
     * The CAD linework frequently closes a mouth completely (a wall across the end, a boxed-in landing). With
       OPEN_BLOCKED_VCE_MOUTHS, a corridor as wide as the mouth is cleared from the mouth out to the open platform, using the
       candidate that needs the fewest wall pixels removed. These openings are recorded in scene['openings'].
-    * Returns, per VCE: entry pixels (alighting riders step in here), exit mask (far end, where riders leave the
-      platform) and src pixels (where departing riders step out of the mouth)."""
+    * Returns, per VCE: entry pixels (alighting riders step in here, boarding riders step off), exit mask (far end, where
+      alighting riders leave the platform and boarding riders appear) and src pixels (the platform in front of the mouth;
+      boarding riders step off onto the band of it that starts just beyond the footprint of anyone entering the mouth)."""
     lv, floor = scene['labeled_vces'], scene['floor']
     wall, obs = scene['wall_mask'], scene['obstacle_mask']
     H, W = lv.shape
@@ -448,6 +491,7 @@ def analyze_vces(scene):
         other_vce = (lv[sl] > 0) & ~own
         ob = obs[sl] & ~own
         squarish = evals[1] < 1.6 * evals[0]
+        hint = MOUTH_DIRECTIONS.get(scene['vce_info'][v].get('mouth', ''))      # end the GeoJSON says is the mouth, if any
         cands = []
         for ai, ax in enumerate([u, nrm] if squarish else [u]):
             pr = np.array([-ax[1], ax[0]])
@@ -486,13 +530,18 @@ def analyze_vces(scene):
                 cost = int((wall[sl] & cells).sum())
                 if cost > 0 and not OPEN_BLOCKED_VCE_MOUTHS:
                     continue
-                cands.append((cost, ai, rank, s, ax, pr, pmin, pmax, halfw, cells, reach))
+                faces_hint = hint is None or float(np.dot(s * ax, hint)) > 0.7
+                cands.append((cost, ai, rank, s, ax, pr, pmin, pmax, halfw, cells, reach, faces_hint))
         if not cands:
             print(f"  warning: VCE {v} ({scene['vce_info'][v]['name'] or 'unnamed'}) cannot be reached from the platform - it is left closed")
             geo[v] = {'entry': (ys[:1], xs[:1]), 'exit_mask': np.zeros((H, W), bool), 'src': (ys[:0], xs[:0], xs[:0].astype(float)),
                       'axis': u, 'side': -1, 'cx': float(c[0]), 'cy': float(c[1]), 'opened': False, 'blocked': True}
             continue
-        cost, ai, rank, s, ax, pr, pmin, pmax, halfw, cells, reach = min(cands, key=lambda t: t[:3])
+        pool = [t for t in cands if t[-1]]
+        if hint is not None and not pool:
+            print(f"  warning: VCE {v} ({scene['vce_info'][v]['name'] or 'unnamed'}): its mouth is marked '{scene['vce_info'][v]['mouth']}' "
+                  f"but that end cannot be reached from the platform - using the other end")
+        cost, ai, rank, s, ax, pr, pmin, pmax, halfw, cells, reach, _ = min(pool or cands, key=lambda t: t[:3])
         if cost > 0:                                                   # clear the corridor through the walls
             wall[sl][cells] = False
             obs[sl][cells] = False
@@ -520,7 +569,7 @@ def build_routing_fields(scene, geo):
     entry_pixels = {v: geo[v]['entry'] for v in geo}
     graph, idx, node = build_walk_graph(wall, lv, entry_pixels)
     graph_t = graph.T.tocsr()
-    entry_fields, internal = {}, {}
+    entry_fields, internal, internal_up = {}, {}, {}
     for v in range(1, n + 1):
         ys, xs = entry_pixels[v]
         dist = dijkstra(graph_t, directed=True, indices=idx[ys, xs], min_only=True)
@@ -530,6 +579,11 @@ def build_routing_fields(scene, geo):
         d = distance_transform_edt(~geo[v]['exit_mask']).astype(np.float32)
         d[lv != v] = np.inf
         internal[v] = d
+        at_mouth = np.zeros(lv.shape, dtype=bool)                      # boarding riders: distance to the cells at the mouth
+        at_mouth[ys, xs] = True
+        up = distance_transform_edt(~at_mouth).astype(np.float32)
+        up[lv != v] = np.inf
+        internal_up[v] = up
     comp, _ = label(node & scene['floor'], structure=np.ones((3, 3)))
     sizes = np.bincount(comp.ravel()); sizes[0] = 0
     for v in range(1, n + 1):                         # a mouth that cannot reach the open platform = closed VCE
@@ -541,7 +595,7 @@ def build_routing_fields(scene, geo):
             entry_fields[v][:] = np.inf
     order = sorted((v for v in geo if not geo[v].get('blocked')), key=lambda v: geo[v]['cx'])
     right_ids = set(order[-2:])                       # the two easternmost usable VCEs get the 'eastern preference'
-    return {'entry_fields': entry_fields, 'internal': internal, 'right_ids': right_ids,
+    return {'entry_fields': entry_fields, 'internal': internal, 'internal_up': internal_up, 'right_ids': right_ids,
             'graph_t': graph_t, 'idx': idx, 'node': node}
 
 
@@ -674,6 +728,7 @@ class Agent:
         self.move_timer = 0.0
         self.kind = kind          # 'alight' = train door -> stairs/escalator ; 'depart' = stairs/escalator mouth -> train door
         self.target = target      # departing riders: the id of the door they are walking to
+        self.train = None         # departing riders: the train they board (1 or 2)
         self.best_field = float('inf')   # closest to their goal they have been so far (for the patience rule)
         self.stall = 0                   # moves since they last got closer
 
@@ -686,6 +741,7 @@ class PedestrianModel:
         self.labeled_vces = scene['labeled_vces']
         self.platform_field = platform_field
         self.vce_fields = routing['internal']
+        self.vce_up_fields = routing['internal_up']               # boarding riders: distance to the stair cells at the mouth
         self.door_fields = door_fields
 
         # Zone around every usable stair/escalator mouth where riders funnel in closer together (see MOUTH_SPACING_PX)
@@ -702,11 +758,14 @@ class PedestrianModel:
         # Footprint bookkeeping: boolean grid of agent CENTER pixels (padded so window slices stay in bounds)
         self.S = params['agent_px']
         self.pad = self.S + CROWDING_BUFFER_PX + 1
-        # Two layers: agents on the platform and agents inside a VCE never see each other. The VCE walls are only
+        # Three layers: agents on the platform and agents inside a VCE never see each other. The VCE walls are only
         # a few pixels thick, so a shared grid let platform agents standing just outside a wall block the
-        # cells inside it (this is what froze the front of the easternmost VCE).
+        # cells inside it (this is what froze the front of the easternmost VCE). Inside a VCE, boarding riders (going up
+        # to the platform) have a layer of their own, so they and the alighting riders (going away from it) never
+        # block each other: every stair/escalator has a lane each way.
         shape = (self.grid_shape[0] + 2 * self.pad, self.grid_shape[1] + 2 * self.pad)
-        self.centers = {'platform': np.zeros(shape, dtype=bool), 'vce': np.zeros(shape, dtype=bool)}
+        self.centers = {'platform': np.zeros(shape, dtype=bool), 'vce': np.zeros(shape, dtype=bool),
+                        'vce_up': np.zeros(shape, dtype=bool)}
         self.occ = {}                       # (y, x) -> agent, for the platform layer (used to let opposing riders swap)
 
         self.dt = TIME_STEP
@@ -745,20 +804,30 @@ class PedestrianModel:
         self.total_pax = sum(t['alight_total'] for t in self.trains.values())
         self.total_dep = sum(t['dep_total'] for t in self.trains.values())
 
-        # where departing riders step out of the stairs/escalators (weighted by the width of the mouth)
-        # (a band starting just beyond the footprint of anyone entering the mouth, so they don't block the entry)
+        # where departing riders start (VCEs weighted by the width of their mouth). 'band' is the platform just beyond the
+        # mouth, starting beyond the footprint of anyone entering it so they don't block the entry. With
+        # DEPARTING_START_AT_VCE_EXIT riders start on the exit line of the stair/escalator - the very cells where alighting
+        # riders vanish -, walk up it to the mouth and step off onto the band; otherwise they simply appear on the band.
         self.dep_sources = []
         for v, g in geo.items():
-            if g.get('blocked') or len(g['src'][0]) == 0:
+            if g.get('blocked') or not len(g['src'][0]):
                 continue
             ys, xs, ds = g['src']
             sel = (ds >= self.S + 1) & (ds <= self.S + 4)
             if not sel.any():
                 sel = ds >= self.S + 1
-            if sel.any():
-                self.dep_sources.append((v, ys[sel], xs[sel]))
-        w = np.array([len(s[1]) for s in self.dep_sources], dtype=float)
+            if not sel.any():
+                continue
+            band = (ys[sel], xs[sel])
+            if DEPARTING_START_AT_VCE_EXIT:
+                eys, exs = np.nonzero(g['exit_mask'])
+                if len(eys) and np.isfinite(self.vce_up_fields[v][eys, exs]).all():
+                    self.dep_sources.append({'v': v, 'ys': eys, 'xs': exs, 'band': band})
+            else:
+                self.dep_sources.append({'v': v, 'ys': band[0], 'xs': band[1], 'band': band})
+        w = np.array([len(s['ys']) for s in self.dep_sources], dtype=float)
         self.dep_weights = w / w.sum() if len(w) else w
+        self.step_off = {s['v']: s['band'] for s in self.dep_sources}
 
     # ---- footprint helpers ----
     def _window(self, layer, y, x, r):
@@ -785,11 +854,13 @@ class PedestrianModel:
         if layer == 'platform':
             self.occ[(y, x)] = agent
 
-    def _swap_partner(self, agent, target_field, y, x, here):
+    def _swap_partner(self, agent, target_field, y, x, here, desperate=False):
         """Two riders who block each other head-on and would BOTH get closer to where they are going by trading
         places do so (people step round one another). Exchanging two equal footprints keeps every other rider's
         spacing intact. Only done when exactly one rider is in the way and both gain, so it never makes a queue
-        jump the line: riders walking the same way never both gain."""
+        jump the line: riders walking the same way never both gain.
+        desperate (a rider stuck for DEADLOCK_SWAP_TICKS): the partner may be any OPPOSING rider (the other kind) among
+        several in the way, need not gain, and the keep-clear zones are ignored - only the mover has to get closer."""
         H, W = self.grid_shape
         r = self.S - 1
         best = None
@@ -800,22 +871,27 @@ class PedestrianModel:
             if dy and dx and (self.wall_mask[ny, x] or self.wall_mask[y, nx]):
                 continue
             win = self._window('platform', ny, nx, r)
-            if win.sum() != 1:
+            n_in = int(win.sum())
+            if n_in == 0 or (n_in != 1 and not desperate):
                 continue
-            wy, wx = np.nonzero(win)
-            by, bx = ny - r + int(wy[0]), nx - r + int(wx[0])
-            other = self.occ.get((by, bx))
-            if other is None or other.state != 'platform':
-                continue
-            if agent.kind == 'depart' and self.keep_clear[by, bx] and not self.keep_clear[y, x]:
-                continue
-            if other.kind == 'depart' and self.keep_clear[y, x] and not self.keep_clear[by, bx]:
-                continue
-            pf = self.door_fields[other.target] if other.kind == 'depart' else self.platform_field
-            mover_gain = here - target_field[by, bx]
-            partner_gain = pf[by, bx] - pf[y, x]
-            if mover_gain >= 1.0 and partner_gain >= 1.0 and (best is None or mover_gain > best[0]):
-                best = (mover_gain, other, by, bx)
+            for wy, wx in zip(*np.nonzero(win)):
+                by, bx = ny - r + int(wy), nx - r + int(wx)
+                other = self.occ.get((by, bx))
+                if other is None or other.state != 'platform':
+                    continue
+                if desperate:
+                    if other.kind == agent.kind:
+                        continue
+                else:
+                    if agent.kind == 'depart' and self.keep_clear[by, bx] and not self.keep_clear[y, x]:
+                        continue
+                    if other.kind == 'depart' and self.keep_clear[y, x] and not self.keep_clear[by, bx]:
+                        continue
+                pf = self.door_fields[other.target] if other.kind == 'depart' else self.platform_field
+                mover_gain = here - target_field[by, bx]
+                partner_gain = pf[by, bx] - pf[y, x]
+                if mover_gain >= 1.0 and (desperate or partner_gain >= 1.0) and (best is None or mover_gain > best[0]):
+                    best = (mover_gain, other, by, bx)
         return best
 
     # ---- stats for the GUI ----
@@ -866,22 +942,12 @@ class PedestrianModel:
                 self.keep_clear[self.doors[d]['zone']] = True
 
     # ---- departing riders: step out of a stairs/escalator mouth and pick a door to board ----
-    def _spawn_departing(self, t):
-        tr = self.trains[t]
-        if not self.dep_sources or not tr['doors']:
-            return False
-        k = np.random.choice(len(self.dep_sources), p=self.dep_weights)
-        _, ys, xs = self.dep_sources[k]
-        for _ in range(3):
-            j = np.random.randint(len(ys))
-            y, x = int(ys[j]), int(xs[j])
-            if self._is_free('platform', y, x) and self._crowding('platform', y, x) <= DEPARTING_MAX_CROWD:
-                break
-        else:
-            return False
+    def _choose_door(self, t, y, x):
+        """The door of train t a rider standing at (y, x) boards: walking distance, crowd at the door, noise. Doors still
+        letting people off are not used. None if there is no such door."""
         best, best_cost = None, np.inf
         r = min(7, self.pad)
-        for d in tr['doors']:
+        for d in self.trains[t]['doors']:
             if self.doors[d]['queue'] > 0:
                 continue                                             # let people off first: this door is still in use
             f = self.door_fields[d][y, x]
@@ -892,12 +958,95 @@ class PedestrianModel:
                     + np.random.logistic(0.0, CAR_NOISE_FT))
             if cost < best_cost:
                 best, best_cost = d, cost
+        return best
+
+    def _spawn_departing(self, t):
+        tr = self.trains[t]
+        if not self.dep_sources or not tr['doors']:
+            return False
+        src = self.dep_sources[np.random.choice(len(self.dep_sources), p=self.dep_weights)]
+        ys, xs = src['ys'], src['xs']
+        if DEPARTING_START_AT_VCE_EXIT:                              # on the exit line of the stair/escalator, in the up lane
+            j = np.random.randint(len(ys))
+            y, x = int(ys[j]), int(xs[j])
+            if not self._is_free('vce_up', y, x):
+                return False
+            if MOUTH_BACKLOG_MAX:                                    # riders already queueing at this mouth: nobody new starts
+                field = self.vce_up_fields[src['v']]
+                waiting = sum(1 for o in self.agents if o.kind == 'depart' and o.state == 'vce' and o.current_vce == src['v']
+                              and field[o.pos[0], o.pos[1]] <= 2 * self.S)
+                if waiting >= MOUTH_BACKLOG_MAX:
+                    return False
+            a = Agent([y, x], kind='depart')
+            a.state, a.current_vce, a.train = 'vce', src['v'], t     # the door is chosen when they step off the stairs
+            self.agents.append(a)
+            self._place(a, 'vce_up', y, x)
+            return True
+        for _ in range(3):
+            j = np.random.randint(len(ys))
+            y, x = int(ys[j]), int(xs[j])
+            if self._is_free('platform', y, x) and self._crowding('platform', y, x) <= DEPARTING_MAX_CROWD:
+                break
+        else:
+            return False
+        best = self._choose_door(t, y, x)
         if best is None:
             return False
         a = Agent([y, x], kind='depart', target=best)
+        a.train = t
         self.agents.append(a)
         self._place(a, 'platform', y, x)
         return True
+
+    def _step_stair_boarder(self, agent):
+        """One move of a boarding rider who is still on a stair/escalator. They walk up it in their own lane (only other
+        boarding riders get in their way) to the cells at the mouth, then step off onto the platform just beyond it - a free,
+        uncrowded cell (DEPARTING_MAX_CROWD), where they pick a door that is no longer letting people off - and carry on to
+        it as ordinary platform riders. Until a cell and a door are free they wait at the mouth."""
+        y, x = agent.pos
+        v = agent.current_vce
+        field = self.vce_up_fields[v]
+        here = field[y, x]
+        H, W = self.grid_shape
+        if here == 0:                                                      # at the mouth: step off
+            bys, bxs = self.step_off[v]
+            for _ in range(3):
+                j = np.random.randint(len(bys))
+                ny, nx = int(bys[j]), int(bxs[j])
+                if self._is_free('platform', ny, nx) and self._crowding('platform', ny, nx) <= DEPARTING_MAX_CROWD:
+                    door = self._choose_door(agent.train, ny, nx)
+                    if door is not None:
+                        self._lift('vce_up', y, x)
+                        agent.state, agent.current_vce, agent.target = 'platform', None, door
+                        agent.pos = [ny, nx]
+                        agent.best_field, agent.stall = float('inf'), 0
+                        self._place(agent, 'platform', ny, nx)
+                    break
+            return
+        # still on the stairs: walk toward the mouth
+        if here < agent.best_field - 0.5:
+            agent.best_field = here
+            agent.stall = 0
+        else:
+            agent.stall += 1
+        crowd_w = self.crowding_penalty * (max(0.0, 1.0 - agent.stall / PATIENCE_TICKS) if PATIENCE_TICKS > 0 else 1.0)
+        self._lift('vce_up', y, x)
+        best_pos, best_score = agent.pos, float('inf')
+        steps = NEIGHBOR_STEPS[:]
+        random.shuffle(steps)
+        for dy, dx in steps:
+            ny, nx = y + dy, x + dx
+            if not (0 <= ny < H and 0 <= nx < W) or self.labeled_vces[ny, nx] != v:
+                continue                                                   # stay on this stair/escalator
+            if dy and dx and (self.wall_mask[ny, x] or self.wall_mask[y, nx]):
+                continue
+            if not self._is_free('vce_up', ny, nx):
+                continue
+            score = field[ny, nx] + self._crowding('vce_up', ny, nx) * crowd_w
+            if score < best_score:
+                best_score, best_pos = score, [ny, nx]
+        self._place(agent, 'vce_up', best_pos[0], best_pos[1])
+        agent.pos = best_pos
 
     def _board(self, agent):
         self.boarded += 1
@@ -956,6 +1105,11 @@ class PedestrianModel:
             agent.move_timer -= 1.0
             departing = agent.kind == 'depart'
 
+            if departing and agent.state == 'vce':                         # boarding rider still on the stairs/escalator
+                self._step_stair_boarder(agent)
+                surviving_agents.append(agent)
+                continue
+
             if departing:
                 target_field = self.door_fields[agent.target]
                 if target_field[y, x] == 0:                                # standing at the door: board
@@ -996,6 +1150,8 @@ class PedestrianModel:
             r_eff = self.S - 1
             if PATIENCE_TICKS > 0 and SQUEEZE_TICKS > 0:
                 r_eff = max(1, r_eff - max(0, agent.stall - PATIENCE_TICKS) // SQUEEZE_TICKS)
+            if departing and DEADLOCK_SWAP_TICKS and DEADLOCK_SQUEEZE_TICKS and agent.stall >= DEADLOCK_SWAP_TICKS:
+                r_eff = max(1, min(r_eff, self.S - 2 - (agent.stall - DEADLOCK_SWAP_TICKS) // DEADLOCK_SQUEEZE_TICKS))
 
             # Lift this agent off its grid so it doesn't block or crowd itself
             layer = agent.state
@@ -1035,6 +1191,8 @@ class PedestrianModel:
             # Boxed in by someone walking the other way? Swap places with them.
             if SWAP_OPPOSING_RIDERS and layer == 'platform' and agent.stall >= 5 and best_free_field >= here - 0.5:
                 sw = self._swap_partner(agent, target_field, y, x, here)
+                if sw is None and DEADLOCK_SWAP_TICKS and agent.stall >= DEADLOCK_SWAP_TICKS:
+                    sw = self._swap_partner(agent, target_field, y, x, here, desperate=True)
                 if sw is not None:
                     _, other, by, bx = sw
                     other.pos = [y, x]
