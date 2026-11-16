@@ -52,8 +52,9 @@ def edge_strip_mask(scene, width_px):
 def place_trains(scene, n_cars, berth_ft):
     """Lay out one train on the north track and one on the south track of the platform.
     Cars are CAR_LENGTH_FT apart (couplers touching), the east end of each train sits berth_ft west of the end of the
-    straight stretch of platform edge. Every car gets a door at each DOOR_POSITIONS_FT; doors that have no
-    platform in front of them are dropped."""
+    straight stretch of platform edge. Every car gets a door at each DOOR_POSITIONS_FT, and every door opens, as in
+    real life: riders step onto the walkable platform cells right in front of it, or - where a wall, a stair or a
+    small pocket is in the way - onto the nearest cells of the open platform (within DOOR_REACH_FT)."""
     floor = scene['floor']
     walk_ok = floor & ~scene['wall_mask'] & ~(scene['labeled_vces'] > 0)
     H, W = floor.shape
@@ -61,6 +62,7 @@ def place_trains(scene, n_cars, berth_ft):
     comp, _ = label(walk_ok, structure=np.ones((3, 3)))
     sizes = np.bincount(comp.ravel()); sizes[0] = 0
     main = comp == sizes.argmax()                                      # the open platform
+    main_cells = np.argwhere(main)
     pitch = CAR_LENGTH_FT * PX_PER_FT
     gap = CAR_COUPLER_GAP_FT * PX_PER_FT
     depth = 2
@@ -103,18 +105,25 @@ def place_trains(scene, n_cars, berth_ft):
                             board.append((r, c))
                             if j <= depth and abs(c - xd) <= half:
                                 pix.append((r, c))
-                if not pix:
-                    continue
+                main_pix = [q for q in pix if main[q]]
+                main_board = [q for q in board if main[q]]
+                if main_pix:
+                    pix, board = main_pix, main_board
+                else:
+                    # Something is right in front of the door (a wall, a stair) or it faces a small pocket: riders step
+                    # off onto the nearest cells of the open platform, a door's width of them, if those are close by.
+                    d = np.hypot(main_cells[:, 0] - (edge_row - out), main_cells[:, 1] - xd)
+                    if d.min() <= DOOR_REACH_FT * PX_PER_FT:
+                        pix = [tuple(q) for q in main_cells[d <= d.min() + half]]
+                        board = main_board or pix
+                    elif not pix:
+                        # A part of the platform cut off from the rest: the door opens onto the nearest walkable cells
+                        # there (riders only choose doors that lead to a stair/escalator, so it may go unused).
+                        cells = np.argwhere(walk_ok)
+                        d = np.hypot(cells[:, 0] - (edge_row - out), cells[:, 1] - xd)
+                        pix = [tuple(q) for q in cells[d <= d.min() + half]]
+                        board = board or pix
                 pix, board = np.array(pix), np.array(board)
-                # only keep doors that open onto real platform: enough walkable depth in front of them, connected to the rest
-                clear_depth = []
-                for c in sorted(set(pix[:, 1].tolist())):
-                    n = 0
-                    while n < 40 and 0 <= int(prof[key][c]) - out * (n + 1) < H and walk_ok[int(prof[key][c]) - out * (n + 1), c]:
-                        n += 1
-                    clear_depth.append(n)
-                if np.median(clear_depth) < MIN_DOOR_DEPTH_PX or main[pix[:, 0], pix[:, 1]].mean() < 0.5:
-                    continue
                 door = {'id': len(layout['doors']), 'car': car['id'], 'train': t, 'pixels': pix, 'board': board,
                         'center': (int(round(pix[:, 0].mean())), int(round(pix[:, 1].mean()))),
                         'rect': np.array([[xd - half, inner], [xd + half, inner],

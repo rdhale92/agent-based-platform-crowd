@@ -18,7 +18,8 @@ GEOMETRY
 TRAINS
     NJ Transit MultiLevel coaches, 85 ft x 10 ft (published). Door positions and width are ESTIMATES (DOOR_POSITIONS_FT,
     DOOR_WIDTH_FT). One train per side of the platform, berthed at the east end of the straight platform edge (ASSUMPTION;
-    the berth slider moves it west). A door is only used where there is open platform in front of it (MIN_DOOR_DEPTH_PX).
+    the berth slider moves it west). Every door opens; one with a wall or stair right in front of it lets riders off
+    onto the nearest open platform.
 
 PASSENGERS
     Alighting (green): every rider starts inside a car, drawn there (IN_CAR_LOADING). When the train arrives each picks a

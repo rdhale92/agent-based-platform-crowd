@@ -28,10 +28,10 @@ CAR_WIDTH_FT = 10.0              # body width (published: 10 ft 0 in)
 CAR_COUPLER_GAP_FT = 1.5         # visual gap drawn between neighbouring car bodies (approximate)
 CAR_PLATFORM_GAP_FT = 0.5        # gap between the car side and the platform edge (approximate)
 DOOR_WIDTH_FT = 3.0              # single-width side door (approximate; ADA minimum clear opening is 32 in)
+DOOR_REACH_FT = 8.0              # every door opens; one with a wall/stair right in front of it lets riders off onto the
+                                 # nearest open platform if it is within this distance (else onto the walkable cells there)
 DOOR_POSITIONS_FT = (3.0, 18.0, 67.0, 82.0) # door centres measured from the car's west end (approximate: one per end)
 DOORS_PER_CAR = len(DOOR_POSITIONS_FT)
-MIN_DOOR_DEPTH_PX = 10           # A door is only used if at least this much open platform (px, ~4.4 ft) lies in front of it;
-                                 # trains berthed beside a wall or a narrow sliver of platform don't open onto it
 CARS_PER_TRAIN = 10              # default train length (cars)
 MAX_CARS = 12                    # upper end of the cars-per-train slider
 
@@ -167,7 +167,7 @@ __all__ = [
     'INCLUDE_UNNAMED_VCES', 'INCLUDE_ELEVATORS', 'OPEN_BLOCKED_VCE_MOUTHS', 'TRACK_MARGIN_FT', 'END_MARGIN_FT',
     # train cars
     'CAR_LENGTH_FT', 'CAR_WIDTH_FT', 'CAR_COUPLER_GAP_FT', 'CAR_PLATFORM_GAP_FT', 'DOOR_WIDTH_FT',
-    'DOOR_POSITIONS_FT', 'DOORS_PER_CAR', 'MIN_DOOR_DEPTH_PX', 'CARS_PER_TRAIN', 'MAX_CARS',
+    'DOOR_POSITIONS_FT', 'DOOR_REACH_FT', 'DOORS_PER_CAR', 'CARS_PER_TRAIN', 'MAX_CARS',
     # passengers / flows
     'AGENT_SIZE_FT', 'WALL_DILATE_PX', 'CROWDING_BUFFER_PX', 'PAXPERDOOR', 'DEPARTING_PER_DOOR',
     'MAX_PAX_PER_DOOR', 'MAX_DEPARTING_PER_DOOR', 'SPAWN_RATE_PER_SECOND', 'MAX_SPAWN_RATE', 'DEPART_RATE',
