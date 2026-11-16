@@ -123,6 +123,8 @@ class PedestrianModel:
         self.in_cars = IN_CAR_LOADING
         self.door_switches = 0                     # riders on board who changed door while waiting
         self.car_changes = 0                       # ...and car-to-car passages they made
+        self.boarded_pos = []                      # (y, x) of every boarded rider, drawn inside their car
+        self._draw_rng = np.random.default_rng()  # own generator: drawing positions never change the simulation
         for d in self.doors.values():
             d['x'] = float(d['center'][1])
             d['at_door'] = []
@@ -529,7 +531,36 @@ class PedestrianModel:
 
     def _board(self, agent):
         self.boarded += 1
-        self.trains[self.doors[agent.target]['train']]['boarded'] += 1
+        door = self.doors[agent.target]
+        self.trains[door['train']]['boarded'] += 1
+        # Remember where they sit, for drawing: inside the car they boarded, within about a quarter car of their door
+        car = self.cars[door['car']]
+        rect = car['rect']
+        xa, xb = rect[:, 0].min() + 1.0, rect[:, 0].max() - 1.0
+        ya, yb = sorted((rect[0, 1], rect[2, 1]))
+        span = 0.25 * (xb - xa)
+        x = float(np.clip(door['x'] + self._draw_rng.uniform(-span, span), xa, xb))
+        self.boarded_pos.append((self._draw_rng.uniform(ya + 1.0, yb - 1.0), x))
+
+    def onboard_positions(self):
+        """(y, x) of the alighting riders still on board, for drawing. Riders waiting at a door are packed into a block
+        inside the car next to it (rows across the car, then outward along it), so a door's queue shows its true size
+        instead of collapsing onto one point."""
+        pts = [(r.y, r.x) for r in self.car_riders if not r.at_door]
+        sp = 0.7 * self.S
+        for d in self.doors.values():
+            if not d['at_door']:
+                continue
+            rect = self.cars[d['car']]['rect']
+            face, outer = rect[0, 1], rect[2, 1]
+            sgn = 1.0 if outer > face else -1.0
+            rows = max(1, int((abs(outer - face) - 2.0) // sp))
+            xa, xb = rect[:, 0].min() + 1.0, rect[:, 0].max() - 1.0
+            for k in range(len(d['at_door'])):
+                row, col = k % rows, k // rows
+                off = (col + 1) // 2 * (1 if col % 2 else -1)          # 0, +1, -1, +2, -2, ...
+                pts.append((face + sgn * (1.0 + sp / 2 + row * sp), float(np.clip(d['x'] + off * sp, xa, xb))))
+        return pts
 
     def step(self):
         self.sim_time += self.dt

@@ -124,7 +124,11 @@ class SimulationGUI:
         self.incar = EllipseCollection(widths=[1], heights=[1], angles=[0], units='xy',
                                        offsets=np.zeros((1, 2)), offset_transform=self.ax.transData,
                                        facecolors=[PAX_RGBA], edgecolors='#0f5132', linewidths=0.2, zorder=4.9)
-        for c in (self.pax, self.dep, self.incar):
+        # Riders who have boarded, drawn inside their car the same way (blue)
+        self.boardedc = EllipseCollection(widths=[1], heights=[1], angles=[0], units='xy',
+                                          offsets=np.zeros((1, 2)), offset_transform=self.ax.transData,
+                                          facecolors=[DEP_RGBA], edgecolors='#1e3a8a', linewidths=0.2, zorder=4.9)
+        for c in (self.pax, self.dep, self.incar, self.boardedc):
             c.set_offsets(np.empty((0, 2)))
             self.ax.add_collection(c)
 
@@ -515,8 +519,9 @@ class SimulationGUI:
         for c in (self.pax, self.dep):
             c.set_widths([self.model.S])
             c.set_heights([self.model.S])
-        self.incar.set_widths([0.6 * self.model.S])
-        self.incar.set_heights([0.6 * self.model.S])
+        for c in (self.incar, self.boardedc):
+            c.set_widths([0.6 * self.model.S])
+            c.set_heights([0.6 * self.model.S])
         self.running = False
         self.paused = False
         self.btn_pause.label.set_text("Pause")
@@ -543,8 +548,8 @@ class SimulationGUI:
 
         alight = [a.pos for a in m.agents if a.kind == 'alight']
         depart = [a.pos for a in m.agents if a.kind == 'depart']
-        on_board = [(r.y, r.x) for r in m.car_riders]
-        for coll, pts in ((self.pax, alight), (self.dep, depart), (self.incar, on_board)):
+        on_board = m.onboard_positions()
+        for coll, pts in ((self.pax, alight), (self.dep, depart), (self.incar, on_board), (self.boardedc, m.boarded_pos)):
             if pts:
                 coll.set_offsets(np.array(pts)[:, [1, 0]])
             else:
