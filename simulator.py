@@ -7,8 +7,9 @@ GEOMETRY
     at PX_PER_FT. Stairs and escalators are the VCEs. Where the drawn walls completely close a VCE mouth, an opening is cut
     through them (OPEN_BLOCKED_VCE_MOUTHS). VCEs that are still unreachable (e.g. the sealed east end of platform 7) are
     drawn gray and left closed. Platforms 1 and 2 are one U-shaped polygon in the file and are split into its two strips.
-    Features whose "level" is not "platform" (concourse-level stairs, elevators, walls) and features marked "status":
-    "planned" (on the plans but not built) are ignored (PLATFORM_LEVEL_ONLY, SKIP_PLANNED); start-up prints how many.
+    Features whose "level" is not "platform" (concourse-level stairs, elevators, walls; "annotation" = CAD symbols kept for
+    reference) and features marked "status": "planned" (on the plans but not built) are ignored (PLATFORM_LEVEL_ONLY,
+    SKIP_PLANNED); start-up prints how many.
     A stair/escalator polygon may carry "mouth": "west" | "east" | "north" | "south", the end where it meets the open platform
     (riders step on and off the platform there). Without it the end is worked out from the surrounding walls. The other end is
     where riders leave the platform: alighting riders vanish there and boarding riders appear. The two flights of platform 5's
@@ -27,11 +28,27 @@ PASSENGERS
     (DEPARTING_START_AT_VCE_EXIT). On a stair/escalator the two directions each get their own lane, so riders going
     up and down never block each other.
 
+ESCALATORS
+    The GeoJSON says which VCEs are escalators ("type": "escalator"; the others are stairs). Each escalator can be set to
+        both    a lane each way, like a stair (the default)
+        up      platform -> concourse: alighting riders use it, nobody comes down it
+        down    concourse -> platform: boarding riders arrive by it, alighting riders never enter it
+    Stairs always carry both. Set the directions
+        * in the dashboard: click an escalator on the map or its card (both -> up -> down -> both); arrows show the setting,
+        * on the command line: --escalators "3=up,P5-S8=down"  (a VCE number as the dashboard shows it, or a vce_name;
+          "all=down", or just "down", sets every escalator),
+        * in this file: ESCALATOR_DIRECTIONS = {'P5-S8': 'down'} (by vce_name) and DEFAULT_ESCALATOR_DIRECTION.
+    The eastern preference goes to the two easternmost VCEs that alighting riders can use, so an eastern escalator set to
+    "down" hands it to the next VCE west. Riders already on an escalator when it is switched finish their ride.
+
 CROWD-MOVEMENT ADDITIONS to the original movement rule (each can be switched off with the constant named):
     PATIENCE_TICKS                   riders who stop making progress stop avoiding crowds (kills standoff rings)
     SWAP_OPPOSING_RIDERS             riders blocking each other head-on, who would both get closer, trade places
     DEADLOCK_SWAP_TICKS              a rider stuck for ~50 s trades places with an opposing rider whatever the rules above say
     DEADLOCK_SQUEEZE_TICKS           a boarding rider stuck that long also accepts less personal space (empties jammed pockets)
+    EDGE_STRIP_PX / EDGE_STRIP_PENALTY   riders don't idle on the 1.5 ft strip along the platform edge: a step onto or along it that
+                                     doesn't bring them closer to where they're going costs extra, so waiting riders drift off it,
+                                     while riders who are walking use it freely
     KEEP_CLEAR_PX / DEPARTING_MAX_CROWD   boarding riders keep clear of doors still letting people off, and only step off
                                      the stairs into uncrowded cells
     Optional, off by default: SQUEEZE_TICKS, MOUTH_SPACING_PX, STAIR_ENTRY_NEEDS_PLATFORM_ROOM = False.
@@ -46,14 +63,16 @@ import itertools
 import json
 import os
 import random
+import re
 import urllib.request
 from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.widgets import Button, Slider
+import matplotlib.patheffects as patheffects
 from matplotlib.collections import EllipseCollection, PolyCollection, LineCollection
-from matplotlib.patches import Rectangle
+from matplotlib.patches import FancyArrowPatch, Rectangle
 from scipy.ndimage import distance_transform_edt, label
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
@@ -124,6 +143,13 @@ PLATFORM_SPEED = 9.0             # Movement ticks per second on the platform (1 
 VCE_SPEED = 7.0                  # Movement ticks per second inside a VCE (1 tick = 1 px)
 ANIMATION_INTERVAL = 15          # Refresh rate in milliseconds (lower = faster rendering)
 RIGHT_VCE_PREFERENCE_BIAS = 300  # Distance bias (px) favoring the 2 easternmost VCEs
+# ---- escalator directions ----
+# An escalator (a VCE the GeoJSON types "escalator"; the rest are stairs) runs 'up' (platform -> concourse: alighting riders use
+# it, nobody comes down it), 'down' (concourse -> platform: boarding riders come down it, alighting riders never enter it) or
+# 'both' (a lane each way, which is how stairs always behave). Click an escalator in the dashboard, or pass --escalators, to
+# change one; these two settings are the starting point.
+DEFAULT_ESCALATOR_DIRECTION = 'both'   # for every escalator not listed below
+ESCALATOR_DIRECTIONS = {}              # per escalator, by its GeoJSON vce_name: {'P5-S8': 'up', 'P6-S10': 'down'}
 CROWDING_PENALTY = 40.0          # Penalty factor for local crowding
 SWAP_OPPOSING_RIDERS = True      # alighting and departing riders who block each other head-on swap places
 PATIENCE_TICKS = 90              # A rider who makes no progress for this many moves (~10 s) stops avoiding crowds: the
@@ -137,6 +163,12 @@ DEADLOCK_SWAP_TICKS = 450        # A rider who has made no progress for this man
 DEADLOCK_SQUEEZE_TICKS = 30      # A BOARDING rider jammed that long (DEADLOCK_SWAP_TICKS) also accepts 1 px less personal
                                  # space, and 1 px less again per this many further moves, so a pocket whose only way out is a
                                  # 1 ft gap (e.g. in front of a stair mouth) empties instead of locking up. 0 = off.
+EDGE_STRIP_PX = 3                # Width (px, ~1.5 ft) of the strip along each track-side platform edge that riders are
+                                 # discouraged from hanging out on. A rider can always walk on it (a step that brings the
+                                 # rider closer to its target costs nothing extra), but a step onto or along it that doesn't
+                                 # costs EDGE_STRIP_PENALTY, so a rider who is waiting, jostling or shuffling prefers cells
+                                 # off the strip. Riders leaving the train still start on it. 0 = off.
+EDGE_STRIP_PENALTY = 40.0        # Cost (px of walking) of such an idle step onto the strip; same scale as CROWDING_PENALTY.
 # --- optional extras, OFF by default (they helped some platforms and hurt others in testing) ---
 SQUEEZE_TICKS = 0                # >0: a rider still stuck after PATIENCE_TICKS accepts 1 px less personal space per further
                                  # SQUEEZE_TICKS without progress (e.g. 30). 0 = off.
@@ -593,8 +625,7 @@ def build_routing_fields(scene, geo):
             print(f"  warning: VCE {v} ({scene['vce_info'][v]['name'] or 'unnamed'}) is sealed off from the platform - it is left closed")
         if geo[v].get('blocked'):
             entry_fields[v][:] = np.inf
-    order = sorted((v for v in geo if not geo[v].get('blocked')), key=lambda v: geo[v]['cx'])
-    right_ids = set(order[-2:])                       # the two easternmost usable VCEs get the 'eastern preference'
+    right_ids = eastern_vces(geo, geo)                # the two easternmost usable VCEs get the 'eastern preference'
     return {'entry_fields': entry_fields, 'internal': internal, 'internal_up': internal_up, 'right_ids': right_ids,
             'graph_t': graph_t, 'idx': idx, 'node': node}
 
@@ -605,6 +636,105 @@ def combine_platform_field(entry_fields, right_ids, bias):
         g = f + (0.0 if v in right_ids else float(bias))
         best = g if best is None else np.minimum(best, g)
     return best
+
+
+def eastern_vces(geo, ids, n=2):
+    """The n easternmost VCEs among `ids` that can be reached from the platform: the ones the eastern preference favours."""
+    order = sorted((v for v in ids if not geo[v].get('blocked')), key=lambda v: geo[v]['cx'])
+    return set(order[-n:])
+
+
+# ---- escalator directions: 'both' = a lane each way, 'up' = platform -> concourse only, 'down' = concourse -> platform only ----
+VCE_MODES = ('both', 'up', 'down')
+NEXT_MODE = {'both': 'up', 'up': 'down', 'down': 'both'}          # the order a click in the dashboard cycles through
+
+
+def parse_directions(text):
+    """'3=up,P5-S8=down,all=down' -> {'3': 'up', 'P5-S8': 'down', 'all': 'down'}. A bare 'down' means 'all=down'."""
+    out = {}
+    for part in (text or '').replace(';', ',').split(','):
+        part = part.strip()
+        if not part:
+            continue
+        key, eq, mode = part.partition('=')
+        if not eq:
+            key, mode = 'all', key
+        key, mode = key.strip(), mode.strip().lower()
+        if mode not in VCE_MODES:
+            raise ValueError(f"'{part}': the direction must be one of {', '.join(VCE_MODES)}")
+        out[key] = mode
+    return out
+
+
+def _name_key(s):
+    return ' '.join(str(s).split()).casefold()
+
+
+def resolve_directions(scene, directions=None):
+    """The direction of every VCE of this platform, {VCE number: 'both' | 'up' | 'down'}.
+    Precedence: DEFAULT_ESCALATOR_DIRECTION, then ESCALATOR_DIRECTIONS (by vce_name), then `directions` (a dict or the
+    --escalators string): 'all' first, then the individual keys, each a VCE number as the dashboard shows it (3 or '3') or a
+    vce_name ('P5-S8'). Only escalators have a direction: a stair named here is reported and ignored."""
+    if isinstance(directions, str):
+        directions = parse_directions(directions)
+    directions = {str(k).strip(): str(m).strip().lower() for k, m in (directions or {}).items()}
+    checks = [('DEFAULT_ESCALATOR_DIRECTION', DEFAULT_ESCALATOR_DIRECTION)]
+    checks += [(f'ESCALATOR_DIRECTIONS[{k!r}]', m) for k, m in ESCALATOR_DIRECTIONS.items()]
+    checks += [(f'escalators[{k!r}]', m) for k, m in directions.items()]
+    for label, mode in checks:
+        if mode not in VCE_MODES:
+            raise ValueError(f"{label} = {mode!r}: the direction must be one of {', '.join(VCE_MODES)}")
+    info = scene['vce_info']
+    by_name = {_name_key(i['name']): v for v, i in info.items() if i['name']}
+    modes = {v: (DEFAULT_ESCALATOR_DIRECTION if i['kind'] == 'escalator' else 'both') for v, i in info.items()}
+
+    def put(v, mode):
+        if info[v]['kind'] != 'escalator':
+            print(f"  note: VCE {v} ({info[v]['name'] or 'unnamed'}) is a {info[v]['kind']}, which always carries both "
+                  f"directions - '{mode}' ignored")
+        else:
+            modes[v] = mode
+
+    for name, mode in ESCALATOR_DIRECTIONS.items():
+        if _name_key(name) in by_name:                                 # names of other platforms' VCEs are simply not here
+            put(by_name[_name_key(name)], mode)
+    for key, mode in directions.items():                               # 'all' first, so individual keys can refine it
+        if key.casefold() == 'all':
+            for v, i in info.items():
+                if i['kind'] == 'escalator':
+                    modes[v] = mode
+    for key, mode in directions.items():
+        if key.casefold() == 'all':
+            continue
+        if key.isdigit():
+            v = int(key)
+            if v in info:
+                put(v, mode)
+            else:
+                print(f"  warning: platform {scene['pid']} has VCEs 1-{scene['n_vces']}, not {v} - '{key}={mode}' ignored")
+        elif _name_key(key) in by_name:
+            put(by_name[_name_key(key)], mode)
+        elif not re.match(r'p\d+-', key.casefold()) or key.casefold().startswith(f"p{scene['pid']}-"):
+            print(f"  warning: platform {scene['pid']} has no VCE named '{key}' - '{key}={mode}' ignored")
+    return modes
+
+
+def describe_directions(scene, modes):
+    """'3 P5-S5 up, 4 P5-S6 down' for the escalators that are not 'both' ('' if there are none)."""
+    return ', '.join(f"{v} {scene['vce_info'][v]['name'] or 'escalator'} {m}" for v, m in sorted(modes.items()) if m != 'both')
+
+
+def alight_field(routing, geo, modes, bias):
+    """(walking-distance field the alighting riders follow, the VCEs the eastern preference favours).
+    An escalator set to 'down' only brings people onto the platform, so it is no place to leave it: it is left out of the
+    field, and the eastern preference goes to the two easternmost of the VCEs that remain. With no escalator set to 'down'
+    this is exactly combine_platform_field(entry_fields, right_ids, bias). If no VCE is left the field is infinite everywhere
+    (no door can reach one, so nobody alights)."""
+    ids = [v for v in routing['entry_fields'] if modes.get(v, 'both') != 'down' and not geo[v].get('blocked')]
+    right = eastern_vces(geo, ids)
+    if not ids:
+        return np.full(next(iter(routing['entry_fields'].values())).shape, np.inf, dtype=np.float32), right
+    return combine_platform_field({v: routing['entry_fields'][v] for v in ids}, right, bias), right
 
 
 def door_field(routing, pixels_yx):
@@ -634,6 +764,31 @@ def edge_profiles(floor):
     top[cols] = floor[:, cols].argmax(axis=0)
     bot[cols] = H - 1 - floor[::-1, cols].argmax(axis=0)
     return {'N': top, 'S': bot}
+
+
+def edge_strip_mask(scene, width_px):
+    """Walkable platform pixels within width_px rows of the track-side platform edge (the first walkable row is row 0).
+    The edge is found the same way place_trains finds it: the first floor pixel seen from the north and from the south."""
+    floor, wall, lv = scene['floor'], scene['wall_mask'], scene['labeled_vces']
+    H, W = floor.shape
+    walk = floor & ~wall & ~(lv > 0)
+    prof = edge_profiles(floor)
+    strip = np.zeros((H, W), bool)
+    for key, sgn in (('N', 1), ('S', -1)):
+        cols = np.where(~np.isnan(prof[key]))[0]
+        e = prof[key][cols].astype(int)
+        first = np.full(len(cols), -1)
+        for o in range(0, 7):                                          # the first walkable row lies just inside the edge
+            rr = np.clip(e + sgn * o, 0, H - 1)
+            ok = (first < 0) & walk[rr, cols]
+            first[ok] = rr[ok]
+        alive = first >= 0
+        for k in range(width_px):
+            rr = first + sgn * k
+            alive &= (rr >= 0) & (rr < H)
+            alive &= walk[np.clip(rr, 0, H - 1), cols]                 # a wall right at the edge ends the strip there
+            strip[rr[alive], cols[alive]] = True
+    return strip
 
 
 def place_trains(scene, n_cars, berth_ft):
@@ -734,7 +889,10 @@ class Agent:
 
 
 class PedestrianModel:
-    def __init__(self, scene, geo, routing, layout, door_fields, platform_field, params):
+    def __init__(self, scene, geo, routing, layout, door_fields, platform_field, params, modes=None):
+        """modes: escalator directions {VCE number: 'both' | 'up' | 'down'} (see set_modes; default: every VCE 'both').
+        platform_field is the field alighting riders follow: build it with alight_field(routing, geo, modes, bias) so that it
+        leaves out the escalators set to 'down'."""
         self.grid_shape = scene['obstacle_mask'].shape
         self.obstacle_mask = scene['obstacle_mask']
         self.wall_mask = scene['wall_mask']
@@ -752,8 +910,14 @@ class PedestrianModel:
         k = 2 * MOUTH_ZONE_PX + 1
         self.mouth_zone = cv2.dilate(mouth, np.ones((k, k), np.uint8)) > 0
 
+        # Strip along the track-side platform edges that riders are discouraged from hanging out on (see EDGE_STRIP_PX)
+        self.edge_strip = edge_strip_mask(scene, EDGE_STRIP_PX) if EDGE_STRIP_PX > 0 else None
+
         self.agents = []
-        self.vce_counts = {i: 0 for i in range(1, scene['n_vces'] + 1)}
+        self.vce_counts = {i: 0 for i in range(1, scene['n_vces'] + 1)}      # alighting riders who left the platform by each VCE
+        self.vce_boarded = {i: 0 for i in range(1, scene['n_vces'] + 1)}     # boarding riders who came onto the platform by it
+        self.vce_mode = {i: 'both' for i in range(1, scene['n_vces'] + 1)}   # escalator directions (set_modes)
+        self.no_alight = None                                                 # pixels of the VCEs alighting riders may not enter
 
         # Footprint bookkeeping: boolean grid of agent CENTER pixels (padded so window slices stay in bounds)
         self.S = params['agent_px']
@@ -762,7 +926,8 @@ class PedestrianModel:
         # a few pixels thick, so a shared grid let platform agents standing just outside a wall block the
         # cells inside it (this is what froze the front of the easternmost VCE). Inside a VCE, boarding riders (going up
         # to the platform) have a layer of their own, so they and the alighting riders (going away from it) never
-        # block each other: every stair/escalator has a lane each way.
+        # block each other: every stair/escalator has a lane each way. (Naming: 'vce_up' is the lane of riders walking from the
+        # exit line toward the platform - the way a DOWN escalator runs in station terms; alighting riders, who ride UP, use 'vce'.)
         shape = (self.grid_shape[0] + 2 * self.pad, self.grid_shape[1] + 2 * self.pad)
         self.centers = {'platform': np.zeros(shape, dtype=bool), 'vce': np.zeros(shape, dtype=bool),
                         'vce_up': np.zeros(shape, dtype=bool)}
@@ -808,7 +973,7 @@ class PedestrianModel:
         # mouth, starting beyond the footprint of anyone entering it so they don't block the entry. With
         # DEPARTING_START_AT_VCE_EXIT riders start on the exit line of the stair/escalator - the very cells where alighting
         # riders vanish -, walk up it to the mouth and step off onto the band; otherwise they simply appear on the band.
-        self.dep_sources = []
+        self._dep_candidates = []
         for v, g in geo.items():
             if g.get('blocked') or not len(g['src'][0]):
                 continue
@@ -822,12 +987,27 @@ class PedestrianModel:
             if DEPARTING_START_AT_VCE_EXIT:
                 eys, exs = np.nonzero(g['exit_mask'])
                 if len(eys) and np.isfinite(self.vce_up_fields[v][eys, exs]).all():
-                    self.dep_sources.append({'v': v, 'ys': eys, 'xs': exs, 'band': band})
+                    self._dep_candidates.append({'v': v, 'ys': eys, 'xs': exs, 'band': band})
             else:
-                self.dep_sources.append({'v': v, 'ys': band[0], 'xs': band[1], 'band': band})
+                self._dep_candidates.append({'v': v, 'ys': band[0], 'xs': band[1], 'band': band})
+        self.step_off = {s['v']: s['band'] for s in self._dep_candidates}
+        self.set_modes(modes)                     # chooses dep_sources / dep_weights among the candidates
+
+    def set_modes(self, modes=None):
+        """Apply escalator directions {VCE number: 'both' | 'up' | 'down'}; may be called while the model runs, and riders
+        already on an escalator finish their ride.
+          'up'   (platform -> concourse only): no boarding rider starts on it.
+          'down' (concourse -> platform only): alighting riders may not step onto it (no_alight). Keeping them from
+                 *heading* for it is the job of the platform_field the caller passes in (alight_field leaves it out)."""
+        if modes:
+            self.vce_mode.update({v: m for v, m in modes.items() if v in self.vce_mode})
+        self.dep_sources = [s for s in self._dep_candidates if self.vce_mode[s['v']] != 'up']
         w = np.array([len(s['ys']) for s in self.dep_sources], dtype=float)
         self.dep_weights = w / w.sum() if len(w) else w
-        self.step_off = {s['v']: s['band'] for s in self.dep_sources}
+        down = [v for v, m in self.vce_mode.items() if m == 'down']
+        self.no_alight = np.isin(self.labeled_vces, down) if down else None
+        if self._dep_candidates and not self.dep_sources and self.total_dep > 0:
+            print("  warning: every VCE that could bring boarding riders onto the platform is set to 'up' - nobody will board")
 
     # ---- footprint helpers ----
     def _window(self, layer, y, x, r):
@@ -1021,6 +1201,7 @@ class PedestrianModel:
                         agent.pos = [ny, nx]
                         agent.best_field, agent.stall = float('inf'), 0
                         self._place(agent, 'platform', ny, nx)
+                        self.vce_boarded[v] += 1
                     break
             return
         # still on the stairs: walk toward the mouth
@@ -1169,6 +1350,8 @@ class PedestrianModel:
                         continue
                     if departing and (self.labeled_vces[ny, nx] > 0 or (self.keep_clear[ny, nx] and not self.keep_clear[y, x])):
                         continue                                           # boarders never enter a VCE or a door still in use
+                    if layer == 'platform' and not departing and self.no_alight is not None and self.no_alight[ny, nx]:
+                        continue                                           # a 'down' escalator is no way off the platform
                     entering = layer == 'platform' and not departing and self.labeled_vces[ny, nx] > 0
                     # Stepping ONTO a stair/escalator only needs room on the stair itself: people waiting on the platform
                     # beside the mouth don't stand on the first step (same layering idea as the platform/VCE split above).
@@ -1184,6 +1367,8 @@ class PedestrianModel:
                         tf = target_field[ny, nx]
                         best_free_field = min(best_free_field, tf)
                         score = tf + self._crowding(layer, ny, nx) * crowd_w
+                        if self.edge_strip is not None and layer == 'platform' and self.edge_strip[ny, nx] and tf >= here - 0.5:
+                            score += EDGE_STRIP_PENALTY                        # idling on the edge strip costs extra
                         if score < best_score:
                             best_score = score
                             best_pos = [ny, nx]
@@ -1250,20 +1435,29 @@ def default_params():
                 boarding_delay=BOARDING_DELAY)
 
 
-def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft=0.0, seed=None, report=30.0, **overrides):
-    """Runs the model without the GUI and prints a short timeline - handy for batch experiments."""
+def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft=0.0, seed=None, report=30.0,
+                 escalators=None, **overrides):
+    """Runs the model without the GUI and prints a short timeline - handy for batch experiments.
+    escalators: escalator directions, as for --escalators: a dict such as {3: 'up', 'P5-S8': 'down'} or the string
+    "3=up,P5-S8=down" ('all=down', or just 'down', sets every escalator). Without it every escalator carries both ways."""
     if seed is not None:
         np.random.seed(seed)
         random.seed(seed)
     station = load_station()
     scene, geo, routing = build_platform(station, str(platform))
+    modes = resolve_directions(scene, escalators)
     layout = place_trains(scene, cars, berth_ft)
     params = {**default_params(), **overrides}
     fields = build_door_fields(routing, layout) if params['dep_per_car'] > 0 else {}
-    field = combine_platform_field(routing['entry_fields'], routing['right_ids'], RIGHT_VCE_PREFERENCE_BIAS)
-    m = PedestrianModel(scene, geo, routing, layout, fields, field, params)
+    field, _ = alight_field(routing, geo, modes, RIGHT_VCE_PREFERENCE_BIAS)
+    m = PedestrianModel(scene, geo, routing, layout, fields, field, params, modes)
     print(f"Platform {platform}: {len(m.trains[1]['cars'])}+{len(m.trains[2]['cars'])} cars, {len(m.doors)} doors, "
           f"{m.total_pax} alighting / {m.total_dep} departing passengers")
+    directions = describe_directions(scene, modes)
+    if directions:
+        print(f"  escalator directions: {directions}")
+        if np.isinf(field).all():
+            print("  warning: no VCE is left for alighting riders to leave the platform by - nobody will alight")
     next_report = 0.0
     while m.sim_time < seconds:
         m.step()
@@ -1274,6 +1468,12 @@ def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft
         if m.alighted >= m.total_pax and not m.agents and m.boarded >= m.total_dep:
             print(f"  everyone is done at t={m.sim_time:.0f}s")
             break
+    if directions:                                               # per-VCE tally, to see what the directions did
+        print("  per VCE: exited = alighting riders who left the platform by it, entered = boarding riders who came onto it")
+        for v in range(1, scene['n_vces'] + 1):
+            info = scene['vce_info'][v]
+            label = info['kind'] + (f" {m.vce_mode[v]}" if info['kind'] == 'escalator' else '')
+            print(f"    VCE {v:2d} {info['name'] or '(unnamed)':12s} {label:16s} exited {m.vce_counts[v]:4d}  entered {m.vce_boarded[v]:4d}")
     return m
 
 
@@ -1283,10 +1483,21 @@ def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft
 class SimulationGUI:
     SLIDER_ROWS = [0.535, 0.488, 0.441, 0.394, 0.347]      # y (figure fraction) of the five slider rows
     VCE_PER_ROW = 6
+    CLICK_TOLERANCE_PX = 8                                  # screen pixels around an escalator that still count as a click on it
+    MODE_LABEL = {'both': 'both ways', 'up': 'up (leaves platform)', 'down': 'down (to platform)'}
+    MODE_COLOR = {'both': MUTED, 'up': '#15803d', 'down': '#1d4ed8'}          # text on the cards
+    ARROW_COLOR = {'both': '#333333', 'up': '#0b6b2f', 'down': '#12369e'}     # arrows on the map
 
-    def __init__(self, platform=PLATFORM):
+    def __init__(self, platform=PLATFORM, escalators=None):
+        """escalators: starting directions for the escalators, as for --escalators (a dict or the string "3=up,P5-S8=down");
+        click an escalator on the map or its card to change it."""
         print("Loading station geometry...")
         self.station = load_station()
+        self.escalator_spec = parse_directions(escalators) if isinstance(escalators, str) else dict(escalators or {})
+        self.platform_modes = {}          # platform id -> {VCE number: direction}; kept while you switch platforms
+        self.modes = {}                   # directions on the platform shown
+        self.right_ids = set()            # VCEs the eastern preference favours (alighting riders' choices only)
+        self.arrow_artists = []
         self.pid = None
         self.scene = self.geo = self.routing = self.layout = None
         self.door_fields = {}
@@ -1446,16 +1657,20 @@ class SimulationGUI:
 
         # --- VCE cards (laid out per platform) ---
         self.fig.text(0.03, 0.262, "Vertical Circulation Elements", fontsize=11, fontweight='bold', color=TEXT, va='center')
-        self.fig.text(0.97, 0.262, "(E) = eastern-preference VCE", fontsize=8, color=FAINT, va='center', ha='right')
+        self.fig.text(0.97, 0.262, "click an escalator (map or card): both ways → up (riders leave the platform) → down "
+                      "(riders arrive on it)    ·    (E) = eastern-preference VCE",
+                      fontsize=8, color=FAINT, va='center', ha='right')
         self.vce_cards = {}
         for i in range(1, MAX_VCE_CARDS + 1):
             ax = self._card_axes([0.03, 0.1, 0.1, 0.05])
             edge = Rectangle((0, 0), 0.012, 1, transform=ax.transAxes, color=BORDER, clip_on=False)
             ax.add_patch(edge)
-            name = ax.text(0.06, 0.70, "", fontsize=9, fontweight='bold', color=TEXT, transform=ax.transAxes, va='center')
-            detail = ax.text(0.06, 0.28, "", fontsize=8, color=MUTED, transform=ax.transAxes, va='center')
+            name = ax.text(0.06, 0.80, "", fontsize=9, fontweight='bold', color=TEXT, transform=ax.transAxes, va='center')
+            kind = ax.text(0.06, 0.52, "", fontsize=8, color=MUTED, transform=ax.transAxes, va='center')
+            detail = ax.text(0.06, 0.24, "", fontsize=7.5, color=MUTED, transform=ax.transAxes, va='center')
             ax.set_visible(False)
-            self.vce_cards[i] = (ax, edge, name, detail)
+            self.vce_cards[i] = (ax, edge, name, kind, detail)
+        self.fig.canvas.mpl_connect('button_press_event', self._on_click)
 
     # ---------- drawing the station ----------
     @staticmethod
@@ -1469,7 +1684,7 @@ class SimulationGUI:
 
     def _apply_view_mode(self):
         show_masks = self.view_mode == 'masks'
-        for a in self.scene_artists + self.layout_artists:
+        for a in self.scene_artists + self.layout_artists + self.arrow_artists:
             if a is not self.mask_im and a is not self.door_scatter:
                 a.set_visible(not show_masks)
         if self.mask_im is not None:
@@ -1524,7 +1739,36 @@ class SimulationGUI:
         self.scene_artists = art
         rows = np.where(sc['floor'].any(axis=1))[0]
         self.view_W, self.view_yc = W, (rows.min() + rows.max()) / 2
+        self._draw_arrows()
         self._apply_view_mode()
+
+    def _draw_arrows(self):
+        """An arrow along every usable escalator showing its direction: 'up' points from the platform end (the mouth) toward
+        the concourse end, 'down' the other way, 'both' has a head at each end."""
+        self._clear(self.arrow_artists)
+        sc, lv = self.scene, self.scene['labeled_vces']
+        halo = [patheffects.withStroke(linewidth=2.8, foreground='white')]
+        for v, info in sc['vce_info'].items():
+            g = self.geo[v]
+            if info['kind'] != 'escalator' or g.get('blocked'):
+                continue
+            ys, xs = np.nonzero(lv == v)
+            u = np.asarray(g['axis'], dtype=float)
+            c = np.array([g['cx'], g['cy']])
+            t = (xs - c[0]) * u[0] + (ys - c[1]) * u[1]
+            lo, hi = t.min() + 1.0, t.max() - 1.0                       # keep the arrowheads inside the escalator
+            if hi - lo < 4:
+                continue
+            at_mouth, at_far = (hi, lo) if g['side'] == 1 else (lo, hi)  # which end of the axis meets the platform
+            mode = self.modes.get(v, 'both')
+            a, b = {'up': (at_mouth, at_far), 'down': (at_far, at_mouth), 'both': (lo, hi)}[mode]
+            arrow = FancyArrowPatch(tuple(c + a * u), tuple(c + b * u), arrowstyle='<|-|>' if mode == 'both' else '-|>',
+                                    mutation_scale=9, linewidth=1.5, color=self.ARROW_COLOR[mode], zorder=5.5,
+                                    shrinkA=0, shrinkB=0)
+            arrow.set_path_effects(halo)
+            self.ax.add_patch(arrow)
+            arrow.set_visible(self.view_mode != 'masks')
+            self.arrow_artists.append(arrow)
 
     def _draw_layout(self):
         self._clear(self.layout_artists)
@@ -1555,14 +1799,14 @@ class SimulationGUI:
         rows = max(1, -(-n // self.VCE_PER_ROW))
         ch = min(0.065, (0.215 - (rows - 1) * 0.008) / rows)
         cw = (0.94 - (self.VCE_PER_ROW - 1) * 0.01) / self.VCE_PER_ROW
-        for i, (ax, edge, name, detail) in self.vce_cards.items():
+        for i, (ax, edge, name, kind, detail) in self.vce_cards.items():
             if i > n:
                 ax.set_visible(False)
                 continue
             r, c = divmod(i - 1, self.VCE_PER_ROW)
             ax.set_position([0.03 + c * (cw + 0.01), 0.245 - ch - r * (ch + 0.008), cw, ch])
             info = self.scene['vce_info'][i]
-            tag = " (E)" if i in self.routing['right_ids'] else ""
+            tag = " (E)" if i in self.right_ids else ""
             name.set_text(f"VCE {i} \u00b7 {info['name'] or info['kind']}{tag}")
             ax.set_visible(True)
 
@@ -1577,7 +1821,10 @@ class SimulationGUI:
         self.pid = pid
         self.layout = None
         self.layout_cache = {}
-        self.applied_bias = None
+        if pid not in self.platform_modes:
+            self.platform_modes[pid] = resolve_directions(self.scene, self.escalator_spec)
+        self.modes = self.platform_modes[pid]
+        self.set_bias(self.s_east.val)               # the field alighting riders follow (depends on bias and directions)
         self._draw_scene()
         self._update_vce_cards()
         title = f"PSNY Platform {pid} Pedestrian Flow Simulation"
@@ -1629,10 +1876,65 @@ class SimulationGUI:
         self.btn_pause.label.set_text("Resume" if self.paused else "Pause")
 
     def set_bias(self, bias):
-        self.platform_field = combine_platform_field(self.routing['entry_fields'], self.routing['right_ids'], bias)
+        """(Re)compute the field alighting riders follow. It depends on the eastern-preference bias and on the escalator
+        directions (an escalator set to 'down' is no way off the platform), so a change to either comes through here."""
+        self.platform_field, self.right_ids = alight_field(self.routing, self.geo, self.modes, bias)
         self.applied_bias = bias
         if self.model is not None:
             self.model.platform_field = self.platform_field
+
+    # ---------- escalator directions ----------
+    def _escalator_at(self, event):
+        """The escalator under a click on the map (within CLICK_TOLERANCE_PX screen pixels of it), or None."""
+        x0, x1 = self.ax.get_xlim()
+        tol = self.CLICK_TOLERANCE_PX * abs(x1 - x0) / max(self.ax.bbox.width, 1.0)      # in raster pixels
+        best, best_d = None, -tol
+        for v, info in self.scene['vce_info'].items():
+            if info['kind'] != 'escalator' or self.geo[v].get('blocked'):
+                continue
+            d = cv2.pointPolygonTest(info['ring_px'].astype(np.float32), (float(event.xdata), float(event.ydata)), True)
+            if d >= best_d:
+                best, best_d = v, d
+        return best
+
+    def _on_click(self, event):
+        """Click an escalator (on the map or its card) to cycle it: both ways -> up -> down -> both ways."""
+        if event.button != 1 or event.inaxes is None or self.scene is None:
+            return
+        tb = getattr(self.fig.canvas, 'toolbar', None)
+        if tb is not None and getattr(tb, 'mode', ''):                  # the toolbar's zoom/pan tool is active: not ours
+            return
+        v = None
+        if event.inaxes is self.ax:
+            v = self._escalator_at(event)
+        else:
+            for i, (cax, *_rest) in self.vce_cards.items():
+                if event.inaxes is cax and cax.get_visible() and i <= self.scene['n_vces']:
+                    v = i
+                    break
+        if v is not None and self.scene['vce_info'][v]['kind'] == 'escalator' and not self.geo[v].get('blocked'):
+            self.set_mode(v, NEXT_MODE[self.modes.get(v, 'both')])
+
+    def set_mode(self, v, mode):
+        """Set escalator v (its number in the dashboard) to 'both', 'up' or 'down' - also while the simulation runs: riders
+        already on it finish their ride, everyone else follows the new setting."""
+        info = self.scene['vce_info'][v]
+        if info['kind'] != 'escalator':
+            raise ValueError(f"VCE {v} ({info['name'] or 'unnamed'}) is a {info['kind']}; only escalators have a direction")
+        if mode not in VCE_MODES:
+            raise ValueError(f"direction must be one of {', '.join(VCE_MODES)}")
+        self.modes[v] = mode
+        self.set_bias(self.s_east.val)
+        if self.model is not None:
+            self.model.set_modes({v: mode})
+        print(f"VCE {v} ({info['name'] or 'escalator'}): {self.MODE_LABEL[mode]}")
+        if np.isinf(self.platform_field).all():
+            print("  warning: no VCE is left for alighting riders to leave the platform by")
+        self._draw_arrows()
+        self._update_vce_cards()
+        if self.model is not None:
+            self.refresh()
+        self.fig.canvas.draw_idle()
 
     def reset(self, _=None):
         pid = str(int(self.s_plat.val))
@@ -1661,7 +1963,7 @@ class SimulationGUI:
             arrival1=self.s_arr1.val, arrival2=self.s_arr2.val,
             dep_per_car=dep_per_car, boarding_delay=self.s_board.val)
         self.model = PedestrianModel(self.scene, self.geo, self.routing, self.layout, self.door_fields,
-                                     self.platform_field, params)
+                                     self.platform_field, params, self.modes)
         for c in (self.pax, self.dep):
             c.set_widths([self.model.S])
             c.set_heights([self.model.S])
@@ -1715,19 +2017,34 @@ class SimulationGUI:
                 f"{len(tr['cars'])}/{tr['requested']} cars fit  |  alighting left {m.train_remaining(t)}/{tr['alight_total']}"
                 f"  |  boarded {tr['boarded']}/{tr['dep_total']}")
 
-        for vce_id, (ax, edge, name, detail) in self.vce_cards.items():
+        for vce_id, (ax, edge, name, kind, detail) in self.vce_cards.items():
             if vce_id > self.scene['n_vces']:
                 continue
+            info = self.scene['vce_info'][vce_id]
+            mode = self.modes.get(vce_id, 'both') if info['kind'] == 'escalator' else 'both'
             if self.geo[vce_id].get('blocked'):
                 ax.set_facecolor('#f3f3f3')
                 edge.set_color('#cccccc')
+                kind.set_text(info['kind'])
+                kind.set_color(MUTED)
                 detail.set_text("closed (no way in from the platform)")
                 continue
+            if info['kind'] == 'escalator':
+                kind.set_text(f"escalator · {self.MODE_LABEL[mode]}")
+                kind.set_color(self.MODE_COLOR[mode])
+            else:
+                kind.set_text(info['kind'])
+                kind.set_color(MUTED)
             q = in_vce.get(vce_id, 0)
             congested = q > CONGESTED_THRESHOLD
             ax.set_facecolor(CONGESTED_BG if congested else 'white')
-            edge.set_color(CONGESTED_EDGE if congested else (ACCENT if vce_id in self.routing['right_ids'] else BORDER))
-            detail.set_text(f"In VCE: {q} | Exited: {m.vce_counts[vce_id]}")
+            edge.set_color(CONGESTED_EDGE if congested else (ACCENT if vce_id in self.right_ids else BORDER))
+            parts = [f"In VCE: {q}"]
+            if mode != 'down':
+                parts.append(f"Exited: {m.vce_counts[vce_id]}")           # alighting riders who left the platform by it
+            if mode != 'up':
+                parts.append(f"Entered: {m.vce_boarded[vce_id]}")         # boarding riders who came onto the platform by it
+            detail.set_text(" | ".join(parts))
 
 
 if __name__ == "__main__":
@@ -1736,9 +2053,17 @@ if __name__ == "__main__":
     ap.add_argument('--platform', type=int, default=PLATFORM, help="platform to simulate (1-11); can also be changed in the GUI")
     ap.add_argument('--headless', type=float, metavar='SECONDS', help="run without the GUI for this many simulated seconds")
     ap.add_argument('--seed', type=int, default=None, help="random seed (headless runs)")
+    ap.add_argument('--escalators', default=None, metavar='SPEC',
+                    help="escalator directions, e.g. \"3=up,P5-S8=down\": a VCE number as the dashboard shows it, or a vce_name, "
+                         "set to up (platform -> concourse), down (concourse -> platform) or both (the default); "
+                         "\"all=down\", or just \"down\", sets every escalator. In the dashboard, click an escalator to change it.")
     args = ap.parse_args()
+    try:
+        parse_directions(args.escalators)
+    except ValueError as exc:
+        ap.error(f"--escalators {exc}")
     if args.headless:
-        run_headless(args.platform, args.headless, seed=args.seed)
+        run_headless(args.platform, args.headless, seed=args.seed, escalators=args.escalators)
     else:
-        gui = SimulationGUI(args.platform)
+        gui = SimulationGUI(args.platform, escalators=args.escalators)
         plt.show()
