@@ -21,8 +21,12 @@ TRAINS
     the berth slider moves it west). A door is only used where there is open platform in front of it (MIN_DOOR_DEPTH_PX).
 
 PASSENGERS
-    Alighting (green): each rider picks one of the doors of their own car - walking distance to the stairs/escalators, plus
-    the queue already at that door, plus noise - and walks to the nearest stair/escalator ('eastern preference' bias applies).
+    Alighting (green): every rider starts inside a car, drawn there (IN_CAR_LOADING). When the train arrives each picks a
+    door - walking distance from the door to the stairs/escalators, plus the queue already at it, plus friction for walking
+    down the car (IN_CAR_FRICTION) and a little more for each car-to-car passage (CAR_CROSS_PENALTY_FT), plus noise -,
+    walks to it inside the train, and keeps looking while waiting, so riders leave a jammed door for one in the same or the
+    next car (DOOR_CHOICE_RANGE_CARS). Off the train they walk to the nearest stair/escalator ('eastern preference' bias applies).
+    IN_CAR_LOADING = False restores the old rule (riders are counters at the doors).
     Departing (blue): appear where the alighting riders vanish (the exit line at the far end of a stair/escalator), walk to
     its mouth, step off onto the platform, pick a door of their train that is no longer letting people off, board
     (DEPARTING_START_AT_VCE_EXIT). On a stair/escalator the two directions each get their own lane, so riders going
@@ -100,7 +104,8 @@ def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft
         m.step()
         if m.sim_time >= next_report:
             next_report += report
-            print(f"  t={m.sim_time:5.0f}s  on platform {len(m.agents):4d}  alighted {m.alighted:4d}/{m.total_pax}"
+            board = f"  on board {len(m.car_riders):4d}" if m.in_cars else ""
+            print(f"  t={m.sim_time:5.0f}s{board}  on platform {len(m.agents):4d}  alighted {m.alighted:4d}/{m.total_pax}"
                   f"  exited {sum(m.vce_counts.values()):4d}  boarded {m.boarded:4d}/{m.total_dep}")
         if m.alighted >= m.total_pax and not m.agents and m.boarded >= m.total_dep:
             print(f"  everyone is done at t={m.sim_time:.0f}s")

@@ -120,7 +120,11 @@ class SimulationGUI:
         self.dep = EllipseCollection(widths=[1], heights=[1], angles=[0], units='xy',
                                      offsets=np.zeros((1, 2)), offset_transform=self.ax.transData,
                                      facecolors=[DEP_RGBA], edgecolors='#1e3a8a', linewidths=0.3, zorder=5.1)
-        for c in (self.pax, self.dep):
+        # Riders still on board (IN_CAR_LOADING), drawn inside the cars a little smaller (cars are not to crowd scale)
+        self.incar = EllipseCollection(widths=[1], heights=[1], angles=[0], units='xy',
+                                       offsets=np.zeros((1, 2)), offset_transform=self.ax.transData,
+                                       facecolors=[PAX_RGBA], edgecolors='#0f5132', linewidths=0.2, zorder=4.9)
+        for c in (self.pax, self.dep, self.incar):
             c.set_offsets(np.empty((0, 2)))
             self.ax.add_collection(c)
 
@@ -511,6 +515,8 @@ class SimulationGUI:
         for c in (self.pax, self.dep):
             c.set_widths([self.model.S])
             c.set_heights([self.model.S])
+        self.incar.set_widths([0.6 * self.model.S])
+        self.incar.set_heights([0.6 * self.model.S])
         self.running = False
         self.paused = False
         self.btn_pause.label.set_text("Pause")
@@ -537,7 +543,8 @@ class SimulationGUI:
 
         alight = [a.pos for a in m.agents if a.kind == 'alight']
         depart = [a.pos for a in m.agents if a.kind == 'depart']
-        for coll, pts in ((self.pax, alight), (self.dep, depart)):
+        on_board = [(r.y, r.x) for r in m.car_riders]
+        for coll, pts in ((self.pax, alight), (self.dep, depart), (self.incar, on_board)):
             if pts:
                 coll.set_offsets(np.array(pts)[:, [1, 0]])
             else:
@@ -550,7 +557,8 @@ class SimulationGUI:
         in_vce = m.in_vce_counts()
         exited = sum(m.vce_counts.values())
         mins, secs = int(m.sim_time // 60), int(m.sim_time % 60)
-        vals = [str(len(m.agents)), f"{m.alighted} / {m.total_pax}", str(exited),
+        on_platform = f"{len(m.agents)}  (+{len(m.car_riders)} on board)" if m.car_riders else str(len(m.agents))
+        vals = [on_platform, f"{m.alighted} / {m.total_pax}", str(exited),
                 f"{m.boarded} / {m.total_dep}", f"{mins}:{secs:02d}"]
         for txt, v in zip(self.stat_texts, vals):
             txt.set_text(v)

@@ -24,6 +24,19 @@ class Agent:
         self.stall = 0                   # moves since they last got closer
 
 
+class CarRider:
+    """An alighting rider still on board (IN_CAR_LOADING). x, y are raster coordinates (px, floats) inside the car body."""
+    __slots__ = ('car', 'x', 'y', 'door', 'at_door', 'wait', 'noise', 'next_check')
+
+    def __init__(self, car, x, y):
+        self.car, self.x, self.y = car, x, y
+        self.door = None          # door id they are heading for (None until the train arrives)
+        self.at_door = False      # standing at the door, waiting to step off
+        self.wait = 0.0           # seconds left getting through the end doors into the next car
+        self.noise = {}           # door id -> their own taste for that door (ft), drawn once
+        self.next_check = 0.0
+
+
 class PedestrianModel:
     def __init__(self, scene, geo, routing, layout, door_fields, platform_field, params, modes=None):
         """modes: escalator directions {VCE number: 'both' | 'up' | 'down'} (see set_modes; default: every VCE 'both').
@@ -104,6 +117,23 @@ class PedestrianModel:
                               'dep_left': dep_per_car * len(usable), 'dep_acc': 0.0, 'boarded': 0}
         self.total_pax = sum(t['alight_total'] for t in self.trains.values())
         self.total_dep = sum(t['dep_total'] for t in self.trains.values())
+
+        # Riders loaded in the cars (IN_CAR_LOADING): created now, spread over each car body, and drawn there
+        self.car_riders = []
+        self.in_cars = IN_CAR_LOADING
+        self.door_switches = 0                     # riders on board who changed door while waiting
+        self.car_changes = 0                       # ...and car-to-car passages they made
+        for d in self.doors.values():
+            d['x'] = float(d['center'][1])
+            d['at_door'] = []
+        if self.in_cars:
+            for t in (1, 2):
+                for cid in self.trains[t]['cars']:
+                    rect = self.cars[cid]['rect']
+                    xa, xb = rect[:, 0].min() + 1.0, rect[:, 0].max() - 1.0
+                    ya, yb = rect[:, 1].min() + 1.0, rect[:, 1].max() - 1.0
+                    for _ in range(per_car[t]):
+                        self.car_riders.append(CarRider(cid, np.random.uniform(xa, xb), np.random.uniform(ya, yb)))
 
         # where departing riders start (VCEs weighted by the width of their mouth). 'band' is the platform just beyond the
         # mouth, starting beyond the footprint of anyone entering it so they don't block the entry. With
@@ -239,6 +269,9 @@ class PedestrianModel:
         tr = self.trains[t]
         rate = max(self.spawn_rate, 0.05)
         queue_cost_ft = DOOR_QUEUE_AWARENESS * (PLATFORM_SPEED / PX_PER_FT) / rate   # ft of walking ~ 1 queued rider's wait
+        if self.in_cars:
+            self._assign_in_cars(t)
+            return
         for cid in tr['cars']:
             doors = [d for d in self._choice_doors(cid)
                      if np.isfinite(self.platform_field[self.doors[d]['pixels'][:, 0], self.doors[d]['pixels'][:, 1]].min())]
@@ -256,6 +289,135 @@ class PedestrianModel:
         for d in tr['doors']:
             if self.doors[d]['queue'] > 0:
                 self.keep_clear[self.doors[d]['zone']] = True
+
+    # ---- alighting riders loaded in the cars (IN_CAR_LOADING) ----
+    def _queue_cost_ft(self):
+        return DOOR_QUEUE_AWARENESS * (PLATFORM_SPEED / PX_PER_FT) / max(self.spawn_rate, 0.05)
+
+    def _car_doors(self, t):
+        """{door id: walking distance (ft) from it to the stairs/escalators} for the doors of train t that reach one."""
+        out = {}
+        for d in self.trains[t]['doors']:
+            px = self.doors[d]['pixels']
+            f = self.platform_field[px[:, 0], px[:, 1]].min()
+            if np.isfinite(f):
+                out[d] = f / PX_PER_FT
+        return out
+
+    def _door_cost(self, r, d, walk_ft, qcost):
+        door = self.doors[d]
+        queue = door['queue'] - (1 if r.door == d else 0)              # riders ahead of / beside them, not counting themselves
+        cars_away = abs(self.cars[door['car']]['index'] - self.cars[r.car]['index'])
+        return (DOOR_PREF_WEIGHT * walk_ft + qcost * queue + IN_CAR_FRICTION * abs(r.x - door['x']) / PX_PER_FT
+                + CAR_CROSS_PENALTY_FT * cars_away + r.noise[d])
+
+    def _candidates(self, r, walk):
+        k = self.cars[r.car]['index']
+        return [d for d in walk if abs(self.cars[self.doors[d]['car']]['index'] - k) <= DOOR_CHOICE_RANGE_CARS]
+
+    def _set_door(self, r, d):
+        if r.door is not None:
+            self.door_switches += 1
+            old = self.doors[r.door]
+            old['queue'] -= 1
+            if r in old['at_door']:
+                old['at_door'].remove(r)
+            if old['queue'] == 0:
+                self.keep_clear[old['zone']] = False
+        new = self.doors[d]
+        new['queue'] += 1
+        if new['queue'] == 1:
+            self.keep_clear[new['zone']] = True                     # boarders keep clear of a door letting people off
+        r.door, r.at_door = d, False
+
+    def _assign_in_cars(self, t):
+        """The doors open: every rider on board picks a door (one at a time, so queues build up as they choose)."""
+        tr = self.trains[t]
+        walk = self._car_doors(t)
+        qcost = self._queue_cost_ft()
+        riders = [r for r in self.car_riders if self.cars[r.car]['train'] == t]
+        random.shuffle(riders)
+        stranded = []
+        for r in riders:
+            cand = self._candidates(r, walk)
+            if not cand:
+                stranded.append(r)
+                continue
+            for d in walk:
+                r.noise[d] = np.random.logistic(0.0, DOOR_NOISE_FT)
+            costs = [self._door_cost(r, d, walk[d], qcost) for d in cand]
+            self._set_door(r, cand[int(np.argmin(costs))])
+            r.next_check = self.sim_time + np.random.uniform(0.0, DOOR_RECHECK_S)
+        for r in stranded:                                              # no door within reach leads to a stair/escalator
+            self.car_riders.remove(r)
+            tr['alight_total'] -= 1
+        self.total_pax = sum(x['alight_total'] for x in self.trains.values())
+        tr['walk'] = walk
+
+    def _step_car_riders(self):
+        """Riders on board walk down the car (and through the end doors into the next car) to their door, and look again
+        now and then: a door that has become clearly cheaper (DOOR_SWITCH_MARGIN_FT) gets them."""
+        qcost = self._queue_cost_ft()
+        step = CAR_WALK_SPEED * self.dt
+        for r in self.car_riders:
+            if r.door is None:
+                continue                                                # train not here yet
+            if not r.at_door and self.sim_time >= r.next_check:
+                r.next_check = self.sim_time + DOOR_RECHECK_S
+                walk = self.trains[self.cars[r.car]['train']]['walk']
+                cand = self._candidates(r, walk)
+                costs = [self._door_cost(r, d, walk[d], qcost) for d in cand]
+                j = int(np.argmin(costs))
+                if cand[j] != r.door and costs[j] < self._door_cost(r, r.door, walk[r.door], qcost) - DOOR_SWITCH_MARGIN_FT:
+                    self._set_door(r, cand[j])
+            if r.at_door:
+                continue
+            if r.wait > 0:
+                r.wait -= self.dt
+                continue
+            door = self.doors[r.door]
+            dx = door['x'] - r.x
+            if abs(dx) <= max(step, 1.0):
+                r.x = door['x']
+                r.at_door = True
+                door['at_door'].append(r)
+                face = self.cars[door['car']]['rect'][0, 1]               # car side facing the platform
+                r.y = face + (1.5 if self.cars[door['car']]['rect'][2, 1] > face else -1.5)
+                continue
+            r.x += step if dx > 0 else -step
+            c = self.cars[r.car]
+            if not (c['x_w'] <= r.x < c['x_e']):                         # through the end doors into the next car
+                for o in self.cars.values():
+                    if o['train'] == c['train'] and o['x_w'] <= r.x < o['x_e']:
+                        r.car = o['id']
+                        r.wait = CAR_CHANGE_DELAY_S
+                        self.car_changes += 1
+                        break
+
+    def _release_in_cars(self):
+        """Doors let riders off at the spawn rate, but only riders who have reached the door."""
+        for door_id, d in self.doors.items():
+            if d['queue'] <= 0:
+                d['acc'] = 0.0
+                continue
+            d['acc'] += self.dt * self.spawn_rate
+            while d['acc'] >= 1.0 and d['queue'] > 0:
+                if not d['at_door']:
+                    d['acc'] = min(d['acc'], 1.0)                       # nobody at the door yet: the slot waits
+                    break
+                spawn_pos = tuple(int(v) for v in d['pixels'][np.random.randint(len(d['pixels']))])
+                if self._is_free('platform', *spawn_pos):
+                    r = d['at_door'].pop(0)
+                    self.car_riders.remove(r)
+                    a = Agent(list(spawn_pos))
+                    self.agents.append(a)
+                    self._place(a, 'platform', *spawn_pos)
+                    d['queue'] -= 1
+                    self.alighted += 1
+                    self.trains[d['train']]['alighted'] += 1
+                    if d['queue'] == 0:
+                        self.keep_clear[d['zone']] = False
+                d['acc'] -= 1.0
 
     # ---- departing riders: step out of a stairs/escalator mouth and pick a door to board ----
     def _choose_door(self, t, y, x):
@@ -379,7 +541,10 @@ class PedestrianModel:
                 tr['assigned'] = True
 
         # Alighting riders leave the train through their doors (rate-limited per door)
-        for door_id, d in self.doors.items():
+        if self.in_cars:
+            self._step_car_riders()
+            self._release_in_cars()
+        for door_id, d in (() if self.in_cars else self.doors.items()):
             if d['queue'] > 0:
                 d['acc'] += self.dt * self.spawn_rate
                 while d['acc'] >= 1.0 and d['queue'] > 0:
@@ -543,4 +708,6 @@ class PedestrianModel:
             self._place(agent, layer, best_pos[0], best_pos[1])
             agent.pos = best_pos
             surviving_agents.append(agent)
+
+        self.agents = surviving_agents
 

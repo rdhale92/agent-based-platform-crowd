@@ -49,6 +49,10 @@ DEPART_RATE = 4.0                # Departing passengers appearing on the stairs/
 DEPARTING_START_AT_VCE_EXIT = True   # True = boarding riders appear where alighting riders vanish (the exit line at the far end
                                  # of each stair/escalator) and walk to the mouth. False = the old rule: they appear on the
                                  # platform a few px beyond the mouth
+IN_CAR_LOADING = True            # True (new) = every alighting rider is created inside its train at simulation start, drawn
+                                 # loaded in the car, and steps onto the platform through its door when the train arrives
+                                 # (rate-limited per door as before). False = the old rule: riders materialise at the doors
+                                 # after the train arrives.
 BOARDING_DELAY = 120             # Seconds after a train's arrival before its departing passengers start to appear
 DEPARTING_MAX_CROWD = 2          # A departing passenger only steps off the stairs into a cell with at most this many
                                  # neighbours (otherwise they wait on the stairs) - keeps stair mouths from locking up
@@ -58,7 +62,17 @@ MOUTH_BACKLOG_MAX = 2            # A stair/escalator starts no new boarding ride
 # Alighting riders choose which door of their own car to leave by: a random-utility choice made when the train arrives.
 #   cost(door) = DOOR_PREF_WEIGHT * walking distance to the stairs/escalators (ft)
 #              + queue-length cost (riders already heading for that door) + logistic noise
-DOOR_CHOICE_RANGE_CARS = 0       # 0 = only the doors of the rider's own car; 1 = the neighbouring cars' doors too, ...
+DOOR_CHOICE_RANGE_CARS = 1       # Doors considered for a rider's door choice: 0 = only the doors of the rider's own car;
+                                 # 1 = also the neighbouring cars' doors (a rider whose own doors are bottlenecked can walk
+                                 # through the train to an adjacent car's door). The extra friction is CAR_CROSS_PENALTY_FT.
+CAR_CROSS_PENALTY_FT = 20.0      # Extra cost (ft of walking) for choosing a door in a neighbouring car, per car boundary
+                                 # crossed. Same car = 0. More than the in-car friction (queue + DOOR_NOISE_FT, ~12 ft), so
+                                 # riders prefer their own doors and only spill over when those are genuinely congested.
+IN_CAR_FRICTION = 1.0            # IN_CAR_LOADING: cost (ft) per ft walked inside the train to reach a door
+CAR_CHANGE_DELAY_S = 3.0         # IN_CAR_LOADING: seconds to get through the end doors into the next car
+CAR_WALK_SPEED = 3.0             # IN_CAR_LOADING: px per second walking down a crowded car (~1.3 ft/s)
+DOOR_RECHECK_S = 5.0             # IN_CAR_LOADING: a rider still on board looks at the doors again about this often...
+DOOR_SWITCH_MARGIN_FT = 6.0      # ...and changes door only if the new one is cheaper by more than this (ft)
 DOOR_PREF_WEIGHT = 1.0           # weight on the walking distance (ft) from a door to the stairs/escalators
 DOOR_QUEUE_AWARENESS = 0.6       # share of a door queue's real waiting-time cost that riders take into account (0 = ignore)
 DOOR_NOISE_FT = 12.0             # randomness in door choice (logistic scale, in ft of walking)
@@ -153,8 +167,9 @@ __all__ = [
     # passengers / flows
     'AGENT_SIZE_FT', 'WALL_DILATE_PX', 'CROWDING_BUFFER_PX', 'PAXPERDOOR', 'DEPARTING_PER_DOOR',
     'MAX_PAX_PER_DOOR', 'MAX_DEPARTING_PER_DOOR', 'SPAWN_RATE_PER_SECOND', 'MAX_SPAWN_RATE', 'DEPART_RATE',
-    'DEPARTING_START_AT_VCE_EXIT', 'BOARDING_DELAY', 'DEPARTING_MAX_CROWD', 'MOUTH_BACKLOG_MAX',
-    'DOOR_CHOICE_RANGE_CARS', 'DOOR_PREF_WEIGHT', 'DOOR_QUEUE_AWARENESS', 'DOOR_NOISE_FT',
+    'DEPARTING_START_AT_VCE_EXIT', 'IN_CAR_LOADING', 'BOARDING_DELAY', 'DEPARTING_MAX_CROWD', 'MOUTH_BACKLOG_MAX',
+    'DOOR_CHOICE_RANGE_CARS', 'CAR_CROSS_PENALTY_FT', 'IN_CAR_FRICTION', 'CAR_CHANGE_DELAY_S', 'CAR_WALK_SPEED',
+    'DOOR_RECHECK_S', 'DOOR_SWITCH_MARGIN_FT', 'DOOR_PREF_WEIGHT', 'DOOR_QUEUE_AWARENESS', 'DOOR_NOISE_FT',
     'CAR_CROWD_WEIGHT_FT', 'CAR_NOISE_FT', 'TIME_STEP', 'PLATFORM_SPEED', 'VCE_SPEED',
     'ANIMATION_INTERVAL', 'RIGHT_VCE_PREFERENCE_BIAS',
     # escalator directions
