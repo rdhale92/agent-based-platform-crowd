@@ -26,7 +26,7 @@ class Agent:
 
 class CarRider:
     """An alighting rider still on board (IN_CAR_LOADING). x, y are raster coordinates (px, floats) inside the car body."""
-    __slots__ = ('car', 'x', 'y', 'door', 'at_door', 'wait', 'noise', 'next_check')
+    __slots__ = ('car', 'x', 'y', 'door', 'at_door', 'wait', 'noise', 'next_check', 'arrived', 'gave_up')
 
     def __init__(self, car, x, y):
         self.car, self.x, self.y = car, x, y
@@ -35,6 +35,8 @@ class CarRider:
         self.wait = 0.0           # seconds left getting through the end doors into the next car
         self.noise = {}           # door id -> their own taste for that door (ft), drawn once
         self.next_check = 0.0
+        self.arrived = 0.0        # when they reached their door (for DOOR_PATIENCE_S)
+        self.gave_up = ()         # doors they left after waiting too long: never chosen again
 
 
 class PedestrianModel:
@@ -123,6 +125,7 @@ class PedestrianModel:
         self.in_cars = IN_CAR_LOADING
         self.door_switches = 0                     # riders on board who changed door while waiting
         self.car_changes = 0                       # ...and car-to-car passages they made
+        self.patience_switches = 0                 # ...of which: riders who gave up waiting at a door (DOOR_PATIENCE_S)
         self.boarded_pos = []                      # (y, x) of every boarded rider, drawn inside their car
         self._draw_rng = np.random.default_rng()  # own generator: drawing positions never change the simulation
         for d in self.doors.values():
@@ -315,7 +318,8 @@ class PedestrianModel:
 
     def _candidates(self, r, walk):
         k = self.cars[r.car]['index']
-        return [d for d in walk if abs(self.cars[self.doors[d]['car']]['index'] - k) <= DOOR_CHOICE_RANGE_CARS]
+        return [d for d in walk if abs(self.cars[self.doors[d]['car']]['index'] - k) <= DOOR_CHOICE_RANGE_CARS
+                and (d not in r.gave_up or d == r.door)]
 
     def _set_door(self, r, d):
         if r.door is not None:
@@ -355,6 +359,10 @@ class PedestrianModel:
             tr['alight_total'] -= 1
         self.total_pax = sum(x['alight_total'] for x in self.trains.values())
         tr['walk'] = walk
+        order = sorted(walk, key=lambda d: self.doors[d]['x'])         # this train's usable doors, west to east
+        for i, d in enumerate(order):
+            self.doors[d]['adjacent'] = order[max(0, i - 1):i] + order[i + 1:i + 2]
+            self.doors[d]['last_release'] = self.sim_time
 
     def _step_car_riders(self):
         """Riders on board walk down the car (and through the end doors into the next car) to their door, and look again
@@ -373,6 +381,10 @@ class PedestrianModel:
                 if cand[j] != r.door and costs[j] < self._door_cost(r, r.door, walk[r.door], qcost) - DOOR_SWITCH_MARGIN_FT:
                     self._set_door(r, cand[j])
             if r.at_door:
+                if (DOOR_PATIENCE_S > 0 and self.sim_time - r.arrived >= DOOR_PATIENCE_S
+                        and self.sim_time >= r.next_check):
+                    r.next_check = self.sim_time + DOOR_RECHECK_S
+                    self._try_adjacent_door(r, qcost)
                 continue
             if r.wait > 0:
                 r.wait -= self.dt
@@ -382,6 +394,9 @@ class PedestrianModel:
             if abs(dx) <= max(step, 1.0):
                 r.x = door['x']
                 r.at_door = True
+                r.arrived = self.sim_time
+                if not door['at_door']:
+                    door['last_release'] = max(door.get('last_release', 0.0), self.sim_time)   # its clock starts now
                 door['at_door'].append(r)
                 face = self.cars[door['car']]['rect'][0, 1]               # car side facing the platform
                 r.y = face + (1.5 if self.cars[door['car']]['rect'][2, 1] > face else -1.5)
@@ -395,6 +410,29 @@ class PedestrianModel:
                         r.wait = CAR_CHANGE_DELAY_S
                         self.car_changes += 1
                         break
+
+    def _try_adjacent_door(self, r, qcost):
+        """A rider who has waited at their door for DOOR_PATIENCE_S looks at the next door along the train on either side
+        (possibly in the next car). Their own door costs what is left of their wait - the riders ahead of them, scaled up
+        by how long the door has gone without letting anyone off - and the other door costs what it would cost a rider
+        choosing it fresh (walk inside the train, a car change, its queue). They move if it is cheaper by more than
+        DOOR_SWITCH_MARGIN_FT."""
+        door = self.doors[r.door]
+        walk = self.trains[door['train']]['walk']
+        ahead = door['at_door'].index(r)
+        stall = max(1.0, (self.sim_time - door['last_release']) * max(self.spawn_rate, 0.05))
+        here = DOOR_PREF_WEIGHT * walk[r.door] + qcost * ahead * stall + r.noise[r.door]
+        best = None
+        for d in door['adjacent']:
+            if d in r.gave_up:
+                continue
+            c = self._door_cost(r, d, walk[d], qcost)
+            if c < here - DOOR_SWITCH_MARGIN_FT and (best is None or c < best[0]):
+                best = (c, d)
+        if best:
+            r.gave_up = r.gave_up + (r.door,)
+            self._set_door(r, best[1])
+            self.patience_switches += 1
 
     def _release_in_cars(self):
         """Doors let riders off at the spawn rate, but only riders who have reached the door."""
@@ -416,6 +454,7 @@ class PedestrianModel:
                     self._place(a, 'platform', *spawn_pos)
                     d['queue'] -= 1
                     self.alighted += 1
+                    d['last_release'] = self.sim_time
                     self.trains[d['train']]['alighted'] += 1
                     if d['queue'] == 0:
                         self.keep_clear[d['zone']] = False

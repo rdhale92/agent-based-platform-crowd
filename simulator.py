@@ -25,7 +25,9 @@ PASSENGERS
     door - walking distance from the door to the stairs/escalators, plus the queue already at it, plus friction for walking
     down the car (IN_CAR_FRICTION) and a little more for each car-to-car passage (CAR_CROSS_PENALTY_FT), plus noise -,
     walks to it inside the train, and keeps looking while waiting, so riders leave a jammed door for one in the same or the
-    next car (DOOR_CHOICE_RANGE_CARS). Off the train they walk to the nearest stair/escalator ('eastern preference' bias applies).
+    next car (DOOR_CHOICE_RANGE_CARS). A rider who has waited at their door for DOOR_PATIENCE_S tries the next door
+    along the train on either side and does not go back to a door they gave up on. Off the train they walk to the nearest
+    stair/escalator ('eastern preference' bias applies).
     IN_CAR_LOADING = False restores the old rule (riders are counters at the doors).
     Departing (blue): appear where the alighting riders vanish (the exit line at the far end of a stair/escalator), walk to
     its mouth, step off onto the platform, pick a door of their train that is no longer letting people off, board

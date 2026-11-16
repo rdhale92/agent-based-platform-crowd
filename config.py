@@ -73,6 +73,10 @@ CAR_CHANGE_DELAY_S = 3.0         # IN_CAR_LOADING: seconds to get through the en
 CAR_WALK_SPEED = 3.0             # IN_CAR_LOADING: px per second walking down a crowded car (~1.3 ft/s)
 DOOR_RECHECK_S = 5.0             # IN_CAR_LOADING: a rider still on board looks at the doors again about this often...
 DOOR_SWITCH_MARGIN_FT = 6.0      # ...and changes door only if the new one is cheaper by more than this (ft)
+DOOR_PATIENCE_S = 20.0           # IN_CAR_LOADING: a rider who has waited this long AT their door (s) starts to consider the
+                                 # next door along the train on either side (possibly in the next car), every DOOR_RECHECK_S.
+                                 # Their own door counts the riders ahead of them, scaled up by how long it has gone without
+                                 # letting anyone off; 0 = never leave a door once there.
 DOOR_PREF_WEIGHT = 1.0           # weight on the walking distance (ft) from a door to the stairs/escalators
 DOOR_QUEUE_AWARENESS = 0.6       # share of a door queue's real waiting-time cost that riders take into account (0 = ignore)
 DOOR_NOISE_FT = 12.0             # randomness in door choice (logistic scale, in ft of walking)
@@ -169,7 +173,7 @@ __all__ = [
     'MAX_PAX_PER_DOOR', 'MAX_DEPARTING_PER_DOOR', 'SPAWN_RATE_PER_SECOND', 'MAX_SPAWN_RATE', 'DEPART_RATE',
     'DEPARTING_START_AT_VCE_EXIT', 'IN_CAR_LOADING', 'BOARDING_DELAY', 'DEPARTING_MAX_CROWD', 'MOUTH_BACKLOG_MAX',
     'DOOR_CHOICE_RANGE_CARS', 'CAR_CROSS_PENALTY_FT', 'IN_CAR_FRICTION', 'CAR_CHANGE_DELAY_S', 'CAR_WALK_SPEED',
-    'DOOR_RECHECK_S', 'DOOR_SWITCH_MARGIN_FT', 'DOOR_PREF_WEIGHT', 'DOOR_QUEUE_AWARENESS', 'DOOR_NOISE_FT',
+    'DOOR_RECHECK_S', 'DOOR_SWITCH_MARGIN_FT', 'DOOR_PATIENCE_S', 'DOOR_PREF_WEIGHT', 'DOOR_QUEUE_AWARENESS', 'DOOR_NOISE_FT',
     'CAR_CROWD_WEIGHT_FT', 'CAR_NOISE_FT', 'TIME_STEP', 'PLATFORM_SPEED', 'VCE_SPEED',
     'ANIMATION_INTERVAL', 'RIGHT_VCE_PREFERENCE_BIAS',
     # escalator directions
