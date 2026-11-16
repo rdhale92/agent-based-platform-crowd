@@ -31,10 +31,43 @@ def ensure_geojson(path=GEOJSON_FILE):
     return target
 
 
+# The station GeoJSON is in longitude and latitude, as GeoJSON requires. The simulator works in the plans' frame in feet
+# (x east along the platforms, y north, both along Manhattan's street grid), the frame of the Effective Transit Alliance's
+# platform-crowd-model, whose shapes_pcip_phase_1.latlon.geojson registers it to OpenStreetMap's platform outlines with a
+# rotation and an offset (the plans are to scale). This is that same mapping, fitted to their file pair (to within 0.1 ft):
+#   [lon, lat] = [x_ft, y_ft, 1] @ FT_TO_LONLAT
+FT_TO_LONLAT = np.array([[3.1540175424007365e-06, -1.3371342460322917e-06],
+                         [1.7650573136407388e-06, 2.3893405476371754e-06],
+                         [-73.99481602786665, 40.75091826897086]])
+FT_DECIMALS = 3                  # feet coordinates are rounded to this after converting back (they were drawn to 0.01 ft)
+
+
+def lonlat_to_ft(coords):
+    """Nested GeoJSON coordinates in longitude/latitude -> the same nesting in the feet frame."""
+    if isinstance(coords[0], (int, float)):
+        x, y = np.linalg.solve(FT_TO_LONLAT[:2].T, np.asarray(coords[:2], dtype=float) - FT_TO_LONLAT[2])
+        return [round(float(x), FT_DECIMALS), round(float(y), FT_DECIMALS)]
+    return [lonlat_to_ft(c) for c in coords]
+
+
+def ft_to_lonlat(coords, decimals=10):
+    """Nested coordinates in the feet frame -> longitude/latitude (for writing the GeoJSON)."""
+    if isinstance(coords[0], (int, float)):
+        lon, lat = np.array([coords[0], coords[1], 1.0]) @ FT_TO_LONLAT
+        return [round(float(lon), decimals), round(float(lat), decimals)]
+    return [ft_to_lonlat(c, decimals) for c in coords]
+
+
 def load_station(path=GEOJSON_FILE):
     path = ensure_geojson(path)
     with open(path) as fh:
         data = json.load(fh)
+    # A file with a "frame" member is already in feet (e.g. the Effective Transit Alliance download); otherwise it is
+    # longitude/latitude and is converted to feet here.
+    if 'frame' not in data:
+        for f in data['features']:
+            if f.get('geometry'):
+                f['geometry']['coordinates'] = lonlat_to_ft(f['geometry']['coordinates'])
     station = {'frame': data.get('frame', ''), 'polys': defaultdict(list), 'walls': []}
     skipped = 0
     for f in data['features']:
