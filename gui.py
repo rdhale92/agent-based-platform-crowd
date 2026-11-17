@@ -25,7 +25,7 @@ def hex_to_rgb(h):
 # 6. DASHBOARD GUI
 # ==========================================
 class SimulationGUI:
-    SLIDER_ROWS = [0.535, 0.488, 0.441, 0.394, 0.347]      # y (figure fraction) of the five slider rows
+    SLIDER_ROWS = [0.545, 0.491, 0.438, 0.385, 0.331]      # y (figure fraction) of the five slider rows
     VCE_PER_ROW = 6
     CLICK_TOLERANCE_PX = 8                                  # screen pixels around an escalator that still count as a click on it
     MODE_LABEL = {'both': 'both ways', 'up': 'up (leaves platform)', 'down': 'down (to platform)'}
@@ -78,8 +78,8 @@ class SimulationGUI:
     def _slider(self, col, row, title, vmin, vmax, step, init, fmt):
         x = 0.03 + col * 0.32
         y = self.SLIDER_ROWS[row]
-        self.fig.text(x, y + 0.019, title, fontsize=9, color=MUTED, va='bottom')
-        ax = self.fig.add_axes([x, y, 0.235, 0.011])
+        self.fig.text(x, y + 0.021, title, fontsize=9, color=MUTED, va='bottom')
+        ax = self.fig.add_axes([x, y, 0.235, 0.013])
         s = Slider(ax, '', vmin, vmax, valinit=init, valstep=step, valfmt=fmt, color=ACCENT,
                    track_color='#e5e7eb', initcolor='none',
                    handle_style=dict(facecolor='white', edgecolor=ACCENT, size=9))
@@ -102,10 +102,10 @@ class SimulationGUI:
     # ---------- figure ----------
     def _build_figure(self, platform):
         self.fig = plt.figure(figsize=(FIG_W, FIG_H), facecolor=BG)
-        self.title = self.fig.text(0.03, 0.978, "", fontsize=16, fontweight='bold', color='#222222', va='top')
+        self.title = self.fig.text(0.03, 0.975, "", fontsize=16, fontweight='bold', color='#222222', va='top')
 
         # --- simulation canvas ---
-        canvas_rect = [0.03, 0.80, 0.94, 0.14]
+        canvas_rect = [0.03, 0.772, 0.94, 0.159]
         self.ax = self.fig.add_axes(canvas_rect)
         self.ax.set_facecolor(CANVAS_BG)
         for s in self.ax.spines.values():
@@ -134,17 +134,17 @@ class SimulationGUI:
             self.ax.add_collection(c)
 
         # --- legend ---
-        lax = self.fig.add_axes([0.03, 0.735, 0.94, 0.03])
+        lax = self.fig.add_axes([0.03, 0.698, 0.94, 0.034])
         lax.axis('off')
         self.legend_dots = {}
         for i, (key, c, name) in enumerate([('door', DOOR_COLOR, 'Train doors'), ('car', CAR_EDGE, 'MultiLevel cars'),
                                             ('vce', IMG_VCE_SWATCH, 'VCEs'), ('pax', PAX_RGBA[:3], 'Alighting'),
                                             ('dep', DEP_RGBA[:3], 'Departing'),
                                             ('obs', IMG_OBS_SWATCH, 'Obstacles / boundary')]):
-            x = 0.002 + i * 0.125
+            x = 0.002 + i * 0.085
             self.legend_dots[key], = lax.plot([x], [0.5], 'o', ms=7, color=c, transform=lax.transAxes, clip_on=False)
             lax.text(x + 0.008, 0.5, name, transform=lax.transAxes, fontsize=9, color=TEXT, va='center')
-        vax = self.fig.add_axes([0.83, 0.738, 0.14, 0.024])
+        vax = self.fig.add_axes([0.83, 0.700, 0.14, 0.030])
         self.btn_view = Button(vax, "View: Image", color='white', hovercolor='#f0f0f0')
         self.btn_view.label.set_fontsize(9)
         self.btn_view.label.set_color(TEXT)
@@ -155,25 +155,27 @@ class SimulationGUI:
         # --- stat cards ---
         self.stat_texts = []
         labels = ["On platform", "Alighted", "Exited via VCEs", "Boarded", "Time"]
-        gap = 0.012
-        cw = (0.94 - (len(labels) - 1) * gap) / len(labels)
+        gap = 0.01
+        tw = 0.19                                                     # the two train cards close the row
+        cw = (0.94 - 2 * tw - (len(labels) + 1) * gap) / len(labels)
         for i, name in enumerate(labels):
-            ax = self._card_axes([0.03 + i * (cw + gap), 0.665, cw, 0.055])
+            ax = self._card_axes([0.03 + i * (cw + gap), 0.619, cw, 0.062])
             ax.text(0.06, 0.70, name, fontsize=8, color=FAINT, transform=ax.transAxes, va='center')
             self.stat_texts.append(ax.text(0.06, 0.28, "0", fontsize=16, fontweight='bold',
                                            color=TEXT, transform=ax.transAxes, va='center'))
 
         # --- train boxes ---
         self.train_texts = {}
-        bw = (0.94 - 0.012) / 2
+        x0 = 0.03 + len(labels) * (cw + gap)
         for i, (t, title) in enumerate([(1, "Train 1 (North)"), (2, "Train 2 (South)")]):
-            ax = self._card_axes([0.03 + i * (bw + 0.012), 0.600, bw, 0.052])
-            ax.add_patch(Rectangle((0, 0), 0.006, 1, transform=ax.transAxes, color=ACCENT, clip_on=False))
-            ax.text(0.02, 0.70, title, fontsize=10, fontweight='bold', color=TEXT, transform=ax.transAxes, va='center')
-            self.train_texts[t] = ax.text(0.02, 0.28, "", fontsize=9, color=TEXT, transform=ax.transAxes, va='center')
+            ax = self._card_axes([x0 + i * (tw + gap), 0.619, tw, 0.062])
+            ax.add_patch(Rectangle((0, 0), 0.02, 1, transform=ax.transAxes, color=ACCENT, clip_on=False))
+            ax.text(0.07, 0.76, title, fontsize=9.5, fontweight='bold', color=TEXT, transform=ax.transAxes, va='center')
+            self.train_texts[t] = ax.text(0.07, 0.34, "", fontsize=8, color=TEXT, transform=ax.transAxes, va='center',
+                                          linespacing=1.5)
 
         # --- scroll for the canvas ---
-        pax_ = self.fig.add_axes([0.03, 0.779, 0.94, 0.009])
+        pax_ = self.fig.add_axes([0.03, 0.749, 0.94, 0.011])
         self.s_pan = Slider(pax_, '', 0.0, 1.0, valinit=0.0, color=ACCENT, track_color='#e5e7eb',
                             initcolor='none', handle_style=dict(facecolor='white', edgecolor=ACCENT, size=9))
         self.s_pan.valtext.set_visible(False)
@@ -202,15 +204,15 @@ class SimulationGUI:
         self.s_zoom.on_changed(lambda _v: self.set_view())
         self.s_pan.on_changed(lambda _v: self.set_view())
 
-        # --- buttons ---
-        bw3 = (0.94 - 2 * 0.012) / 3
-        self.btn_start = self._button([0.03, 0.290, bw3, 0.036], "Start", self.on_start)
-        self.btn_pause = self._button([0.03 + bw3 + 0.012, 0.290, bw3, 0.036], "Pause", self.on_pause)
-        self.btn_reset = self._button([0.03 + 2 * (bw3 + 0.012), 0.290, bw3, 0.036], "Reset", self.reset)
+        # --- buttons (in the legend row, left of the view toggle) ---
+        bw3 = (0.82 - 0.53 - 2 * 0.008) / 3
+        self.btn_start = self._button([0.53, 0.700, bw3, 0.030], "Start", self.on_start)
+        self.btn_pause = self._button([0.53 + bw3 + 0.008, 0.700, bw3, 0.030], "Pause", self.on_pause)
+        self.btn_reset = self._button([0.53 + 2 * (bw3 + 0.008), 0.700, bw3, 0.030], "Reset", self.reset)
 
         # --- VCE cards (laid out per platform) ---
-        self.fig.text(0.03, 0.262, "Vertical Circulation Elements", fontsize=11, fontweight='bold', color=TEXT, va='center')
-        self.fig.text(0.97, 0.262, "click an escalator (map or card): both ways → up (riders leave the platform) → down "
+        self.fig.text(0.03, 0.299, "Vertical Circulation Elements", fontsize=11, fontweight='bold', color=TEXT, va='center')
+        self.fig.text(0.97, 0.299, "click an escalator (map or card): both ways → up (riders leave the platform) → down "
                       "(riders arrive on it)    ·    (E) = eastern-preference VCE",
                       fontsize=8, color=FAINT, va='center', ha='right')
         self.vce_cards = {}
@@ -369,14 +371,14 @@ class SimulationGUI:
     def _update_vce_cards(self):
         n = self.scene['n_vces']
         rows = max(1, -(-n // self.VCE_PER_ROW))
-        ch = min(0.065, (0.215 - (rows - 1) * 0.008) / rows)
+        ch = min(0.074, (0.245 - (rows - 1) * 0.009) / rows)
         cw = (0.94 - (self.VCE_PER_ROW - 1) * 0.01) / self.VCE_PER_ROW
         for i, (ax, edge, name, kind, detail) in self.vce_cards.items():
             if i > n:
                 ax.set_visible(False)
                 continue
             r, c = divmod(i - 1, self.VCE_PER_ROW)
-            ax.set_position([0.03 + c * (cw + 0.01), 0.245 - ch - r * (ch + 0.008), cw, ch])
+            ax.set_position([0.03 + c * (cw + 0.01), 0.279 - ch - r * (ch + 0.009), cw, ch])
             info = self.scene['vce_info'][i]
             tag = " (E)" if i in self.right_ids else ""
             name.set_text(f"VCE {i} \u00b7 {info['name'] or info['kind']}{tag}")
@@ -582,7 +584,7 @@ class SimulationGUI:
         in_vce = m.in_vce_counts()
         exited = sum(m.vce_counts.values())
         mins, secs = int(m.sim_time // 60), int(m.sim_time % 60)
-        on_platform = f"{len(m.agents)}  (+{len(m.car_riders)} on board)" if m.car_riders else str(len(m.agents))
+        on_platform = str(len(m.agents))
         vals = [on_platform, f"{m.alighted} / {m.total_pax}", str(exited),
                 f"{m.boarded} / {m.total_dep}", f"{mins}:{secs:02d}"]
         for txt, v in zip(self.stat_texts, vals):
@@ -591,8 +593,8 @@ class SimulationGUI:
         for t in (1, 2):
             tr = m.trains[t]
             self.train_texts[t].set_text(
-                f"{len(tr['cars'])}/{tr['requested']} cars fit  |  alighting left {m.train_remaining(t)}/{tr['alight_total']}"
-                f"  |  boarded {tr['boarded']}/{tr['dep_total']}")
+                f"{len(tr['cars'])}/{tr['requested']} cars fit  ·  boarded {tr['boarded']}/{tr['dep_total']}\n"
+                f"alighting left {m.train_remaining(t)}/{tr['alight_total']}")
 
         for vce_id, (ax, edge, name, kind, detail) in self.vce_cards.items():
             if vce_id > self.scene['n_vces']:

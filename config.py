@@ -125,7 +125,7 @@ STAIR_ENTRY_NEEDS_PLATFORM_ROOM = True   # True = the original rule: stepping on
 KEEP_CLEAR_PX = 4                # Boarding riders stay this many px clear of a door that is still letting people off
 CONGESTED_THRESHOLD = 15         # A VCE card turns red when more than this many pax are inside it
 # ---- window ----
-FIG_W, FIG_H = 15.0, 11.5        # figure size (inches)
+FIG_W, FIG_H = 15.0, 10.10        # figure size (inches)
 DEFAULT_ZOOM = 1.0               # initial zoom (1 = whole platform length visible)
 MAX_VCE_CARDS = 18               # cards reserved for the VCE read-outs
 # ==========================================
