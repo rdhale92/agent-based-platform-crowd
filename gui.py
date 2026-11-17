@@ -55,6 +55,7 @@ class SimulationGUI:
         self.scene_artists, self.layout_artists = [], []
         self.view_mode = 'image'
         self.mask_im = None
+        self.mask_only, self.vce_labels = [], []
         self.door_scatter = None
         self.view_W, self.view_yc = 1000, 50
 
@@ -237,10 +238,12 @@ class SimulationGUI:
     def _apply_view_mode(self):
         show_masks = self.view_mode == 'masks'
         for a in self.scene_artists + self.layout_artists + self.arrow_artists:
-            if a is not self.mask_im and a is not self.door_scatter:
+            if a is not self.mask_im and a is not self.door_scatter and a not in self.vce_labels:
                 a.set_visible(not show_masks)
         if self.mask_im is not None:
             self.mask_im.set_visible(show_masks)
+        for a in self.mask_only:
+            a.set_visible(show_masks)
 
     def _draw_scene(self):
         self._clear(self.scene_artists)
@@ -255,6 +258,16 @@ class SimulationGUI:
         mv[sc['obstacle_mask']] = hex_to_rgb(OBSTACLE_COLOR)
         mv[sc['wall_mask'] & ~sc['obstacle_mask']] = hex_to_rgb('#8a8a8a')
         mv[sc['labeled_vces'] > 0] = hex_to_rgb(VCE_COLOR)
+        self.mask_only = []
+        for v, g in self.geo.items():                          # spawn end: where alighting riders leave / boarding riders appear
+            if g.get('blocked') or not g['exit_mask'].any():
+                continue
+            mv[g['exit_mask']] = hex_to_rgb(SPAWN_END_COLOR)
+            ey, ex = np.nonzero(g['exit_mask'])
+            mk = ax.scatter([ex.mean()], [ey.mean()], s=40, marker='*', c=SPAWN_END_COLOR, edgecolors='black',
+                            linewidths=0.5, zorder=6, visible=False)
+            art.append(mk)
+            self.mask_only.append(mk)
         self.mask_base = mv
         self.mask_im = ax.imshow(mv, interpolation='nearest', aspect='auto', zorder=0, visible=False)
         art.append(self.mask_im)
@@ -277,14 +290,21 @@ class SimulationGUI:
             polys = [r for (vid, k, r) in geom['vces'] if k == kind and not self.geo[vid].get('blocked')]
             if polys:
                 art.append(PolyCollection(polys, facecolors=color, edgecolors='#8a3a00', linewidths=0.4, zorder=4))
+        spawn = np.zeros((H, W, 4))                           # spawn end of each usable VCE (where riders leave / appear)
+        for g in self.geo.values():
+            if not g.get('blocked'):
+                spawn[g['exit_mask']] = (*(np.array(hex_to_rgb(SPAWN_END_IMG_COLOR)) / 255), 1.0)
+        art.append(ax.imshow(spawn, interpolation='nearest', aspect='auto', zorder=4.5))
         closed = [r for (vid, k, r) in geom['vces'] if self.geo[vid].get('blocked')]
         if closed:
             art.append(PolyCollection(closed, facecolors='#bdbdbd', edgecolors='#777777', linewidths=0.4, zorder=4))
-        for vce_id, kind, ring in geom['vces']:                # VCE numbers
+        self.vce_labels = []
+        for vce_id, kind, ring in geom['vces']:                # VCE numbers (shown in both views)
             cx, ytop = ring[:, 0].mean(), ring[:, 1].min()
-            art.append(ax.text(cx, ytop - 2, str(vce_id), color='#111111', fontsize=8, fontweight='bold',
+            self.vce_labels.append(ax.text(cx, ytop - 2, str(vce_id), color='#111111', fontsize=8, fontweight='bold',
                                ha='center', va='bottom', zorder=6,
                                bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none', alpha=0.85)))
+        art += self.vce_labels
         for a in art:
             if a.axes is None:                                # collections still need attaching; the image and texts are
                 ax.add_collection(a)

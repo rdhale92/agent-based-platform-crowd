@@ -141,6 +141,8 @@ FAINT = '#999999'
 DOOR_COLOR = '#dc1e1e'
 IMG_VCE_SWATCH = '#ff7400'       # legend colors while showing the drawn geometry
 IMG_OBS_SWATCH = '#404040'
+SPAWN_END_COLOR = '#ffd400'   # mask view: far (spawn/exit) end of each stair/escalator
+SPAWN_END_IMG_COLOR = '#d6008f'   # image view: the same, in a colour that stands out on the floor
 VCE_COLOR = '#ff0000'
 OBSTACLE_COLOR = '#333333'
 FLOOR_COLOR = '#fff3b0'          # platform floor (yellow, as in the PNG)
@@ -188,7 +190,7 @@ __all__ = [
     'FIG_W', 'FIG_H', 'DEFAULT_ZOOM', 'MAX_VCE_CARDS',
     # theme
     'BG', 'CANVAS_BG', 'BORDER', 'CARD_BORDER', 'TEXT', 'MUTED', 'FAINT', 'DOOR_COLOR',
-    'IMG_VCE_SWATCH', 'IMG_OBS_SWATCH', 'VCE_COLOR', 'OBSTACLE_COLOR', 'FLOOR_COLOR', 'FLOOR_EDGE',
+    'IMG_VCE_SWATCH', 'IMG_OBS_SWATCH', 'VCE_COLOR', 'SPAWN_END_COLOR', 'SPAWN_END_IMG_COLOR', 'OBSTACLE_COLOR', 'FLOOR_COLOR', 'FLOOR_EDGE',
     'STAIR_COLOR', 'ESCALATOR_COLOR', 'ELEVATOR_COLOR', 'CAR_COLOR', 'CAR_EDGE',
     'PAX_RGBA', 'DEP_RGBA', 'ACCENT', 'CONGESTED_EDGE', 'CONGESTED_BG',
 ]
