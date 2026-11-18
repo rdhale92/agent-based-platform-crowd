@@ -2,7 +2,7 @@
 
 Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. After entry 11 the file had 3,018 features. Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
 
-Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entry 26 is Nov 18. The file now has 2,936 features.
+Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entries 26 and 27 are Nov 18. The file now has 2,936 features.
 
 ## At a glance
 
@@ -141,7 +141,7 @@ Reconstructed on Nov 18 from the git history: each commit's file was compared fe
 - Platform 3, planned (not built): stairs 51 (P3-S8), 52, 53 (P3-S9), elevator 652, and 41 walls and one enclosure around them (1715 to 1935).
 - Platform 3, other: 54 (P3-S10) redrawn to x 658.2 to 691.8 with mouth west; 55 (unnamed stair) and wall 692 to concourse level; four `#545252` mezzanine-edge walls (2500, 2553, 2556, 2568) to concourse level.
 - New level `"annotation"` (ignored by the simulator, like concourse): nine CAD door symbols in P6 stair and escalator doorways (964, 965, 968, 969, 978, 979, 1080, 1081, 1083).
-- Doorway trims: 20 wall lines in P5 and P6 doorways shortened so the opening is clear (966, 967, 1079, 1082, 1084, 1089 to 1091 at x about 266 on P6; 1548 to 1679 at x about 422 on P5 and P6). Their `source` cites entries 6 and 7 of a `CHANGELOG_geojson_2026-11.md` (Nov 12), which is not in the repository.
+- Doorway trims: 20 wall lines in P5 and P6 doorways shortened so the opening is clear (966, 967, 1079, 1082, 1084, 1089 to 1091 at x about 266 on P6; 1548 to 1679 at x about 422 on P5 and P6). The trims were made on Nov 12.
 
 ## 13. Nov 15, `bddc608`: Train Hall escalators redrawn (21 added, 29 deleted)
 
@@ -223,6 +223,10 @@ Reconstructed on Nov 18 from the git history: each commit's file was compared fe
 - Both `source` fields say they were split from the U polygon and where the cut is.
 - Why: the simulator had to cut the U into two strips at load time (`_split_u_platform` in station.py), which only worked for this one polygon. With two ordinary platform polygons that code is gone, and every platform loads the same way.
 - Check: 60 s headless runs, same seed, against the code before the split. Platform 2 is identical (453 riders left the platform). Platform 1 is within 2 riders (436 vs 434), because its floor is now the polygon itself rather than a horizontal band of the U. Both keep 9+8 cars and 68 doors.
+
+## 27. Nov 18: source notes cleaned (31 edited, properties only)
+
+- Shortened the `source` notes of 31 features (the doorway trims and CAD symbols of entry 12, and the platform 5 and 7 west fingers) so they only say what was done and when. No geometry changed.
 
 ---
 
