@@ -1,10 +1,12 @@
 # Changelog: `shapes_pcip_phase_1.geojson`
 
-Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. The file now has 3,018 features and matches my local commit `f278ab7` (not pushed, as you asked). Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
+Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. After entry 11 the file had 3,018 features. Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
 
-Gap: the GeoJSON commits of Nov 15-16 (`68b9234` to `831c294`, 14 commits) are not logged here yet, so the feature indices and counts below (in "At a glance" and the appendix) describe the file as of entry 11. Entry 12 uses the indices in the file as of Nov 18 (2,936 features).
+Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entry 26 is Nov 18. The file now has 2,936 features.
 
 ## At a glance
+
+Entries 1 to 11, against `ff3ee37`:
 
 - 91 existing features edited, 13 features added, none deleted.
   - 39 changed from `"level": "platform"` to `"level": "concourse"`.
@@ -13,10 +15,17 @@ Gap: the GeoJSON commits of Nov 15-16 (`68b9234` to `831c294`, 14 commits) are n
 - Platform 5: 37 edited + 7 added. Platform 6: 44 edited + 6 added. Platform 10: 10 edited. Nothing else in the file was touched.
 - No existing feature was moved or reordered, and no coordinate of an existing feature changed except the two T-stair polygons. New features are appended at the end (indices 3005 to 3017), so every old index still points at the same feature.
 
+Entries 12 to 26, Nov 15 to 18:
+
+- 3,018 to 2,936 features: 138 feature edits, 132 added, 214 deleted (3,018 + 132 - 214 = 2,936), so the old indices from entries 1 to 11 no longer point at the same features.
+- The big changes: the Moynihan Train Hall end of platforms 5 to 8 (entries 12 to 14), the file stored in longitude/latitude (15), the stray linework and gone stairs on platforms 7 and 8 (16, 18, 21, 22), the last T-stairs split and the freight-elevator landings (17), and Penn platforms 1 and 2 split into separate polygons (26).
+- Feature numbers in those entries are the indices right after each change, so they are listed in each entry; the appendix table below covers entries 1 to 11 and 26.
+
 ## How the simulator treats these properties
 
 - `"level": "concourse"`: the simulator ignores the feature (`PLATFORM_LEVEL_ONLY`).
 - `"status": "planned"`: ignored too (`SKIP_PLANNED`).
+- `"level": "annotation"` (from entry 12): CAD symbols kept for reference; ignored like concourse.
 - `"mouth": "west" | "east" | "north" | "south"` on a stair or escalator: the end that meets the open platform (see the simulator changelog).
 - "VCE n" below is the simulator's west-to-east numbering of the stairs and escalators on that platform at the time you asked. It shifts when stairs are split or marked planned, so I give the `vce_name` where there is one.
 
@@ -119,7 +128,94 @@ Not done: the same rectangle at x about 166 to 188 on platforms 3 and 4 also has
 - Left alone, as you said: the two lines parallel to the stairwell wall (the signs).
 - Side effect, not fixed in the geojson: with VCE 3 entered from the west, about 80 more riders head for VCE 4 and its mouth gridlocks under the default settings. `MOUTH_SPACING_PX = 2` in simulator.py cleared it in my tests (see the simulator changelog).
 
-## 12. Nov 18: Platforms 1 and 2, U-shaped polygon split in two (1 edited, 1 added)
+## Nov 15-16 commits (entries 12 to 25)
+
+Reconstructed on Nov 18 from the git history: each commit's file was compared feature by feature with the one before it (coordinates in feet, rounded to 0.1 ft), and the reasons come from the commit messages. Feature numbers are the indices in the file right after that commit, so they shift from entry to entry as features are deleted; "a -> b" means the feature was index a before the commit and b after. Line = index + 2, as before.
+
+## 12. Nov 15, `68b9234`: Moynihan Train Hall, platform 3, doorway trims (86 edited, 83 added)
+
+- Platforms 5, 6 and 7 (4, 5, 6) extended west from x = -401.4 to the Train Hall: the west fingers traced from the Moynihan Station General Project Plan (June 2010, PDF page 22), to x = -645.7 on P5 and P7 and -622.9 on P6.
+- Train Hall equipment added (3020 to 3048): the egress-corridor outline (3020), two sets of enclosures at x -415 to -379 and -340 to -325 on P4 to P8 (3021 to 3030), six passenger elevators at x -260 to -251 on P3 to P8 (3031 to 3036), and twelve escalators P{3-8}-TH-N/S at x -233 to -200 (3037 to 3048). Entry 13 replaced the elevators and escalators.
+- 52 columns added (3049 to 3100), from the same plan: the columns on the west fingers of P5, P6 and P7, and the round columns by the Train Hall escalators on P4, P5, P7 and P8 that the PCIP plan does not show. 3049 and 3050 are small enclosures at the tips of the P5 and P7 fingers.
+- Platform 3, T-shaped stair P3-S3 split like P5/P6 (entries 4 and 7): 46 becomes `P3-S3 west` (mouth west); added 3018 `P3-S3 east` (mouth east) and 3019 `P3-S3 stem` (concourse level).
+- Platform 3, planned (not built): stairs 51 (P3-S8), 52, 53 (P3-S9), elevator 652, and 41 walls and one enclosure around them (1715 to 1935).
+- Platform 3, other: 54 (P3-S10) redrawn to x 658.2 to 691.8 with mouth west; 55 (unnamed stair) and wall 692 to concourse level; four `#545252` mezzanine-edge walls (2500, 2553, 2556, 2568) to concourse level.
+- New level `"annotation"` (ignored by the simulator, like concourse): nine CAD door symbols in P6 stair and escalator doorways (964, 965, 968, 969, 978, 979, 1080, 1081, 1083).
+- Doorway trims: 20 wall lines in P5 and P6 doorways shortened so the opening is clear (966, 967, 1079, 1082, 1084, 1089 to 1091 at x about 266 on P6; 1548 to 1679 at x about 422 on P5 and P6). Their `source` cites entries 6 and 7 of a `CHANGELOG_geojson_2026-11.md` (Nov 12), which is not in the repository.
+
+## 13. Nov 15, `bddc608`: Train Hall escalators redrawn (21 added, 29 deleted)
+
+- Deleted the egress-corridor outline (3020), the six passenger elevators west of the escalators (3031 to 3036) and the twelve TH-N/S escalators (3037 to 3048).
+- The ten Train Hall enclosures are unchanged; they move up one place (3021 to 3030 become 3020 to 3029).
+- Added eleven escalators with their mouths at the east end (`"mouth": "east"`): P3-TH-E (3030) and P{4-8}-TH-W/E (3031 to 3040), TH-W at x -199.6 to -149.0 and TH-E at x -147.0 to -95.9.
+- File: 3,093 features.
+
+## 14. Nov 15, `08950f3`: Train Hall escalators trimmed to their treads (11 edited)
+
+- 3030 to 3040 cut to 28 ft, the part drawn as treads at platform level on the Level A lower concourse plan; the rest of each unit rises overhead. TH-W now x -177.0 to -149.0, TH-E x -123.9 to -95.9, east mouths unchanged.
+- Why: at full length there were about 2 ft between VCE 1's mouth and the back of VCE 2, so boarders could not come off VCE 1 on P4, P6 and P8. Now about 25 ft of platform lies in front of VCE 1.
+
+## 15. Nov 16, `d9932d1`: file stored in longitude/latitude (no feature changed)
+
+- Every coordinate converted from the plans' feet frame to WGS 84 longitude/latitude, registered as the Effective Transit Alliance's platform-crowd-model registers the same frame to OpenStreetMap (rotation and offset, no scale; within 0.1 ft of their file pair).
+- Written to 10 decimals, so every feature converts back to its previous feet coordinates; the comparison found no feature changed. station.py converts back on load (`FT_TO_LONLAT`).
+
+## 16. Nov 16, `e1f9d53`: platforms 4 and 7 (1 edited, 3 added, 100 deleted)
+
+- Platform 4: the unnamed stair 60 (x 407.4) and P4-S7 (61) are one escalator: replaced by 60, escalator `P4-S7`, x 407.4 to 424.9, mouth east. P4-S8 (61) and P4-S9 (62) are planned. The L-shaped wall 2499 -> 2409, which traces the West End Concourse outline, to concourse level.
+- Platform 7: deleted the unnamed diagonal stair (110) and P7-S10 (89), which are not VCEs, and 94 wall and enclosure features of stray linework: around P7-S8/P7-S9 (x 349 to 436), from the former VCE 9 to P7-S12 (x 515 to 692) and the wall ring at x 484 to 492 (enclosure 2492). P7 is one connected platform again and every VCE is reachable.
+
+## 17. Nov 16, `8867783`: T-stairs split, enclosure doors opened, freight landings (9 edited, 16 added, 17 deleted)
+
+- T-shaped stairs P4-S3 (56), P7-S5 (83) and P8-S4 (91) split like P3/P5/P6: each becomes the west flight (mouth west); added the east flights (2981, 2983, 2985, mouth east) and the overhead stems at concourse level (2982, 2984, 2986).
+- P7-S6's door leaves (948 to 953), which swung out and pinched its entrance, replaced by two leaves flat against the enclosure sides (948, 949). P4-S4's half-swung leaves (967 -> 963 and 972 -> 967 kept and straightened; 969, 974, 977, 978 deleted); P4-S4 (57) gets mouth west, facing its entrance.
+- Platform 7: walls 2407 -> 2399, 2435 -> 2427 and 2451 -> 2443 (the C-shaped wall at the West End Concourse alcove, x -79.9 to -70.5, and two walls just west of P7-S8) to concourse level.
+- Freight-elevator landings (Level A plan, Feb 2010): a 19.9 x 8.1 ft enclosure between the corner columns at x 166.5 to 186.4 on platforms 2 to 9 (2987 to 2994). They replace the Oct wall outlines on P5 (2912 to 2914) and P6 (2917 to 2920), which are deleted. The non-public hallway is not drawn.
+
+## 18. Nov 16, `07a10e4`: P7/P8 VCEs (10 edited, 1 added, 18 deleted)
+
+- P7-S4 (82) and P8-S3 (90) no longer exist: deleted, with the 16 wall and enclosure features that drew them (666 to 721).
+- P7-S9 (87 -> 86) gets mouth east.
+- Added 2977, P8-S8: a stair drawn with treads at x 405.3 to 422.3 that never had a polygon. It climbs westward, so its mouth is east.
+- To concourse level: P8's C-shaped mezzanine-edge wall by the west end (2397 -> 2379), and the `#545252` walls around P8-S7, P8-S9 and P8-S11 (2438 to 2474 -> 2420 to 2456).
+
+## 19. Nov 16, `940af7a`: P8 mezzanine-edge walls (5 edited)
+
+- To concourse level: the `#545252` walls between P8-S6 and P8-S7 (2398, 2399, x 291 to 292) and at the east end of platform 8 (2462 to 2464, x 734 to 758).
+
+## 20. Nov 16, `f0f3ea9`: P8-S5 mouth (1 edited)
+
+- 90 (P8-S5) gets mouth west, the door end; its east end stays a closed wall.
+
+## 21. Nov 16, `acb06d2`: P5 VCE 6-7, P7 VCE 5, 6 and 9 (6 edited, 1 added, 8 deleted)
+
+- P5-S7 (67) widened to cover the whole flight (x 372.8 to 389.9).
+- Platform 5: mezzanine-edge walls by P5-S6/S7 (2404, 2414, 2415 -> 2397, 2407, 2408) to concourse level. The door at P5-S6's east end and the door between P5-S7 and the elevator closed: leaves 1381, 1382, 1387 deleted, a straight wall added (1376), and wall 1144 -> 1139 extended to y 0.6.
+- Platform 7: stray flaps inside the P7-S6 enclosure (983, 984, 987) and the angled P7-S7 door leaves (1002, 1005) deleted; P7-S11 (87) ends snapped to the CAD outline.
+
+## 22. Nov 16, `480f43e`: P7 VCE 5, 6 and 9 linework (5 edited, 1 added, 25 deleted)
+
+- Deleted a stray wall under the freight-elevator landing (2651), the flaps past VCE 6's east end and the door leaves further east (1079 to 1105 and 1206 to 1209, 24 features); an end wall closes that enclosure (1092, x 292.5).
+- VCE 5's mouth leaves straightened (956, 960); P7-S7 (84) keeps its mouth at the west end (`"mouth": "west"`).
+- One more mezzanine-edge wall to concourse level (2395 -> 2372).
+- P7-S11 (87) widened to the enclosure's inner walls.
+
+## 23. Nov 16, `1fa08bb`: P7-S11 reshaped (1 edited)
+
+- 87 (P7-S11) redrawn to the drawn escalator outline (x 631.8 to 653.9), mouth west.
+
+## 24. Nov 16, `49859e1`: P7-S6 widened, P7-S8 mouth (2 edited)
+
+- 83 (P7-S6) widened to its enclosure walls (x 219.5 to 232.7).
+- 85 (P7-S8) gets mouth east.
+
+## 25. Nov 16, `831c294`: P6-S10 and P6-S11 mouths opened (5 added, 17 deleted)
+
+- P6-S10's enclosure at x 672 to 691: ten door-leaf and double-line wall features (2073 to 2082) replaced by four straight single walls (2073 to 2076).
+- P6-S11's enclosure at x 769 to 794: seven features (2227 to 2232, 2234) replaced by one wall (2221).
+- Both mouths are now open to the platform. File: 2,935 features.
+
+## 26. Nov 18: Platforms 1 and 2, U-shaped polygon split in two (1 edited, 1 added)
 
 - The PCIP drawing has platforms 1 and 2 as one U-shaped polygon (`"platform": "1/2"`), joined at the east end by a short non-public link. That link (the bridge of the U) is cut out: x 884.4 to 911.1 ft, between y -148.5 and -173.8.
 - 9 stays where it is and becomes platform 2, the north strip (`"platform": "2"`). Its west end and both long edges are the original vertices; the east end is closed with a straight edge at x = 911.1 from y -128.1 to -148.5.
@@ -145,7 +241,7 @@ Each round was a guarded one-line text edit (one feature per line, so line numbe
 
 ## Appendix: every touched feature
 
-Line = line number in the file (index + 2). Entry = the numbered entry above.
+Line = line number in the file (index + 2). Entry = the numbered entry above. Entries 12 to 25 list their features in the entries themselves; rows for entries 1 to 11 use the indices of the file after entry 11.
 
 | Feature | Line | Platform | Type | Name | Colour | Change | Entry |
 |---|---|---|---|---|---|---|---|
@@ -253,5 +349,5 @@ Line = line number in the file (index + 2). Entry = the numbered entry above.
 | 3015 | 3017 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
 | 3016 | 3018 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
 | 3017 | 3019 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
-| 9 | 11 | 2 | platform |  |  | U polygon "1/2" cut down to the north strip, now platform 2 | 12 |
-| 2935 | 2937 | 1 | platform |  |  | NEW (level platform): the south strip of the U | 12 |
+| 9 | 11 | 2 | platform |  |  | U polygon "1/2" cut down to the north strip, now platform 2 | 26 |
+| 2935 | 2937 | 1 | platform |  |  | NEW (level platform): the south strip of the U | 26 |
