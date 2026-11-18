@@ -2,6 +2,8 @@
 
 Every tunable of the model and of the dashboard lives here; the other modules import them with `from config import *`.
 """
+import os
+
 import matplotlib.pyplot as plt
 
 
@@ -9,7 +11,8 @@ import matplotlib.pyplot as plt
 # CONFIGURATION PARAMETERS (defaults for the GUI sliders)
 # ==========================================
 # ---- station geometry (replaces the old platform5_polygons.png) ----
-GEOJSON_FILE = "shapes_pcip_phase_1.geojson"   # whole-station geometry in feet (downloaded automatically if missing)
+# whole-station geometry (downloaded automatically if missing); set PEDFLOW_GEOJSON to load another file instead
+GEOJSON_FILE = os.environ.get("PEDFLOW_GEOJSON", "shapes_pcip_phase_1.geojson")
 GEOJSON_URL = ("https://github.com/effective-transit-alliance/platform-crowd-model/raw/refs/heads/"
                "kkysen/per-vce/data/shapes_pcip_phase_1.geojson")
 PLATFORM_LEVEL_ONLY = True       # skip features whose "level" is not "platform" (concourse-level stairs, elevators, walls)

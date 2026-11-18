@@ -42,12 +42,12 @@ FT_TO_LONLAT = np.array([[3.1540175424007365e-06, -1.3371342460322917e-06],
 FT_DECIMALS = 3                  # feet coordinates are rounded to this after converting back (they were drawn to 0.01 ft)
 
 
-def lonlat_to_ft(coords):
+def lonlat_to_ft(coords, ft_to_lonlat=FT_TO_LONLAT):
     """Nested GeoJSON coordinates in longitude/latitude -> the same nesting in the feet frame."""
     if isinstance(coords[0], (int, float)):
-        x, y = np.linalg.solve(FT_TO_LONLAT[:2].T, np.asarray(coords[:2], dtype=float) - FT_TO_LONLAT[2])
+        x, y = np.linalg.solve(ft_to_lonlat[:2].T, np.asarray(coords[:2], dtype=float) - ft_to_lonlat[2])
         return [round(float(x), FT_DECIMALS), round(float(y), FT_DECIMALS)]
-    return [lonlat_to_ft(c) for c in coords]
+    return [lonlat_to_ft(c, ft_to_lonlat) for c in coords]
 
 
 def ft_to_lonlat(coords, decimals=10):
@@ -63,11 +63,13 @@ def load_station(path=GEOJSON_FILE):
     with open(path) as fh:
         data = json.load(fh)
     # A file with a "frame" member is already in feet (e.g. the Effective Transit Alliance download); otherwise it is
-    # longitude/latitude and is converted to feet here.
+    # longitude/latitude and is converted to feet here, with the file's own "ft_to_lonlat" matrix when it has one (a
+    # station whose platforms do not run along the Penn frame's x axis) or else the Penn frame's FT_TO_LONLAT.
     if 'frame' not in data:
+        m = np.asarray(data['ft_to_lonlat'], dtype=float) if 'ft_to_lonlat' in data else FT_TO_LONLAT
         for f in data['features']:
             if f.get('geometry'):
-                f['geometry']['coordinates'] = lonlat_to_ft(f['geometry']['coordinates'])
+                f['geometry']['coordinates'] = lonlat_to_ft(f['geometry']['coordinates'], m)
     station = {'frame': data.get('frame', ''), 'polys': defaultdict(list), 'walls': []}
     skipped = 0
     for f in data['features']:
@@ -115,41 +117,17 @@ def _overlaps(b, win):
     return not (b[2] < win[0] or b[0] > win[2] or b[3] < win[1] or b[1] > win[3])
 
 
-def _split_u_platform(station):
-    """Platforms 1 and 2 are drawn as ONE U-shaped polygon ('1/2'). Returns (polygon, {'1': (ylo, yhi), '2': (ylo, yhi)})."""
-    poly = next(p for p in station['polys']['platform'] if p['props'].get('platform') == '1/2')
-    x0, y0, x1, y1 = poly['bbox']
-    h, w = int(np.ceil(y1 - y0)) + 2, int(np.ceil(x1 - x0)) + 2
-    m = np.zeros((h, w), np.uint8)
-    _fill(m, np.column_stack((poly['rings'][0][:, 0] - x0, y1 - poly['rings'][0][:, 1])))
-    prof = m.sum(axis=1)
-    inrun = prof > 0.3 * prof.max()
-    runs, start = [], None
-    for r, v in enumerate(inrun):
-        if v and start is None:
-            start = r
-        if (not v) and start is not None:
-            runs.append((start, r - 1)); start = None
-    if start is not None:
-        runs.append((start, h - 1))
-    runs = sorted(runs, key=lambda r: r[1] - r[0], reverse=True)[:2]     # the two long strips
-    runs.sort()                                                           # north strip (small row) first
-    (n0, n1), (s0, s1) = runs
-    return poly, {'2': (y1 - n1 - 0.5, y1 - n0 + 0.5), '1': (y1 - s1 - 0.5, y1 - s0 + 0.5)}
-
-
 def platform_ids(station):
-    return [str(i) for i in range(1, 12)]
+    """The platforms the loaded GeoJSON has, as strings sorted by number."""
+    ids = {str(p['props'].get('platform', '')).strip() for p in station['polys']['platform']}
+    return sorted((i for i in ids if i.isdigit()), key=int)
 
 
 def _floor_polygon(station, pid):
-    """(rings, (ylo, yhi) clip or None) for one platform."""
-    if pid in ('1', '2'):
-        poly, ranges = _split_u_platform(station)
-        return poly['rings'], ranges[pid]
+    """The rings of one platform's floor polygon."""
     for p in station['polys']['platform']:
         if p['props'].get('platform') == pid:
-            return p['rings'], None
+            return p['rings']
     raise KeyError(f"Platform {pid} not found in the GeoJSON")
 
 
@@ -176,10 +154,8 @@ def _longest_run(prof, tol=1.5, max_gap=6):
 def build_scene(station, pid):
     """Rasterises one platform (plus a strip of track either side) into the masks the simulator uses."""
     pid = str(pid)
-    rings, clip = _floor_polygon(station, pid)
+    rings = _floor_polygon(station, pid)
     fx0, fy0, fx1, fy1 = (rings[0][:, 0].min(), rings[0][:, 1].min(), rings[0][:, 0].max(), rings[0][:, 1].max())
-    if clip is not None:
-        fy0, fy1 = max(fy0, clip[0]), min(fy1, clip[1])
     ox, oy = fx0 - END_MARGIN_FT, fy1 + TRACK_MARGIN_FT
     W = int(np.ceil((fx1 + END_MARGIN_FT - ox) * PX_PER_FT))
     H = int(np.ceil((oy - (fy0 - TRACK_MARGIN_FT)) * PX_PER_FT))
@@ -189,10 +165,6 @@ def build_scene(station, pid):
     _fill(floor, _to_px(rings[0], ox, oy))
     for hole in rings[1:]:
         _fill(floor, _to_px(hole, ox, oy), 0)
-    if clip is not None:                                   # keep just this platform's strip of the U
-        rows = np.arange(H)
-        y_of_row = oy - (rows + 0.5) / PX_PER_FT
-        floor[(y_of_row < clip[0]) | (y_of_row > clip[1])] = 0
     floor = floor.astype(bool)
 
     geom = {'columns': [], 'enclosures': [], 'elevators': [], 'walls': [], 'vces': []}

@@ -9,7 +9,7 @@ from matplotlib.collections import EllipseCollection, PolyCollection, LineCollec
 from matplotlib.patches import FancyArrowPatch, Rectangle
 import cv2
 from config import *
-from station import load_station
+from station import load_station, platform_ids
 from routing import parse_directions, resolve_directions, NEXT_MODE, VCE_MODES, alight_field
 from trains import place_trains
 from agents import PedestrianModel
@@ -59,6 +59,13 @@ class SimulationGUI:
         self.door_scatter = None
         self.view_W, self.view_yc = 1000, 50
 
+        self.platform_ids = platform_ids(self.station)
+        if not self.platform_ids:
+            raise SystemExit(f"{GEOJSON_FILE} has no platform polygons to simulate")
+        if str(platform) not in self.platform_ids:
+            print(f"  warning: {GEOJSON_FILE} has no platform {platform} (it has {', '.join(self.platform_ids)}) - "
+                  f"starting on platform {self.platform_ids[0]}")
+            platform = self.platform_ids[0]
         self._build_figure(platform)
         self.reset()
         self.ani = animation.FuncAnimation(
@@ -184,7 +191,8 @@ class SimulationGUI:
 
         # --- sliders (3-column grid) ---
         pc = DOORS_PER_CAR
-        self.s_plat = self._slider(0, 0, "Platform (1-11)  - applies on Reset", 1, 11, 1, int(platform), '%d')
+        lo, hi = int(self.platform_ids[0]), int(self.platform_ids[-1])
+        self.s_plat = self._slider(0, 0, f"Platform ({lo}-{hi})  - applies on Reset", lo, hi, 1, int(platform), '%d')
         self.s_cars = self._slider(1, 0, "Cars per train  - applies on Reset", 1, MAX_CARS, 1, CARS_PER_TRAIN, '%d')
         self.s_berth = self._slider(2, 0, "Train berth: ft west of the east end  - applies on Reset", 0, 400, 10, 0, '%d ft')
         self.s_load1 = self._slider(0, 1, "Train 1 alighting (pax per car)  - applies on Reset", 0, MAX_PAX_PER_DOOR * pc, 5,
@@ -274,7 +282,7 @@ class SimulationGUI:
         self.mask_im = ax.imshow(mv, interpolation='nearest', aspect='auto', zorder=0, visible=False)
         art.append(self.mask_im)
 
-        # the drawing (vector): floor from the raster so the U-shaped platform 1/2 is split correctly
+        # the drawing (vector): floor traced from the raster
         contours, _ = cv2.findContours(sc['floor'].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         floor_polys = [c[:, 0, :].astype(float) for c in contours if len(c) >= 3]
         art.append(PolyCollection(floor_polys, facecolors=FLOOR_COLOR, edgecolors=FLOOR_EDGE, linewidths=0.6, zorder=1))

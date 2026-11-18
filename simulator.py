@@ -6,7 +6,7 @@ GEOMETRY
     script the first time if it is missing. Choose a platform (1-11) with the slider or `--platform N`; it is rasterised
     at PX_PER_FT. Stairs and escalators are the VCEs. Where the drawn walls completely close a VCE mouth, an opening is cut
     through them (OPEN_BLOCKED_VCE_MOUTHS). VCEs that are still unreachable (e.g. the sealed east end of platform 7) are
-    drawn gray and left closed. Platforms 1 and 2 are one U-shaped polygon in the file and are split into its two strips.
+    drawn gray and left closed.
     Features whose "level" is not "platform" (concourse-level stairs, elevators, walls; "annotation" = CAD symbols kept for
     reference) and features marked "status": "planned" (on the plans but not built) are ignored (PLATFORM_LEVEL_ONLY,
     SKIP_PLANNED); start-up prints how many.
@@ -71,7 +71,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from config import *
-from station import load_station
+from station import load_station, platform_ids
 from routing import parse_directions, resolve_directions, alight_field, describe_directions
 from trains import place_trains
 from agents import PedestrianModel
@@ -88,6 +88,9 @@ def run_headless(platform=PLATFORM, seconds=900.0, cars=CARS_PER_TRAIN, berth_ft
         np.random.seed(seed)
         random.seed(seed)
     station = load_station()
+    ids = platform_ids(station)
+    if str(platform) not in ids:
+        raise SystemExit(f"{GEOJSON_FILE} has no platform {platform}; it has {', '.join(ids) or 'none'}")
     scene, geo, routing = build_platform(station, str(platform))
     modes = resolve_directions(scene, escalators)
     layout = place_trains(scene, cars, berth_ft)

@@ -2,6 +2,8 @@
 
 Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. The file now has 3,018 features and matches my local commit `f278ab7` (not pushed, as you asked). Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
 
+Gap: the GeoJSON commits of Nov 15-16 (`68b9234` to `831c294`, 14 commits) are not logged here yet, so the feature indices and counts below (in "At a glance" and the appendix) describe the file as of entry 11. Entry 12 uses the indices in the file as of Nov 18 (2,936 features).
+
 ## At a glance
 
 - 91 existing features edited, 13 features added, none deleted.
@@ -116,6 +118,15 @@ Not done: the same rectangle at x about 166 to 188 on platforms 3 and 4 also has
 - 75 (escalator P6-S5, VCE 3) gets `"mouth": "west"`. Its west end is the spring-loaded zigzag door and its east end is a real wall, so riders now go in at the west end and ascend west to east. Before, they were being routed through the wall. Platform 6 goes from 66 to 67 doors (a new door at x = -0.8 on train 1).
 - Left alone, as you said: the two lines parallel to the stairwell wall (the signs).
 - Side effect, not fixed in the geojson: with VCE 3 entered from the west, about 80 more riders head for VCE 4 and its mouth gridlocks under the default settings. `MOUTH_SPACING_PX = 2` in simulator.py cleared it in my tests (see the simulator changelog).
+
+## 12. Nov 18: Platforms 1 and 2, U-shaped polygon split in two (1 edited, 1 added)
+
+- The PCIP drawing has platforms 1 and 2 as one U-shaped polygon (`"platform": "1/2"`), joined at the east end by a short non-public link. That link (the bridge of the U) is cut out: x 884.4 to 911.1 ft, between y -148.5 and -173.8.
+- 9 stays where it is and becomes platform 2, the north strip (`"platform": "2"`). Its west end and both long edges are the original vertices; the east end is closed with a straight edge at x = 911.1 from y -128.1 to -148.5.
+- Added 2935: platform 1, the south strip (`"platform": "1"`). Same treatment, closed at x = 911.1 from y -173.8 to -196.2.
+- Both `source` fields say they were split from the U polygon and where the cut is.
+- Why: the simulator had to cut the U into two strips at load time (`_split_u_platform` in station.py), which only worked for this one polygon. With two ordinary platform polygons that code is gone, and every platform loads the same way.
+- Check: 60 s headless runs, same seed, against the code before the split. Platform 2 is identical (453 riders left the platform). Platform 1 is within 2 riders (436 vs 434), because its floor is now the polygon itself rather than a horizontal band of the U. Both keep 9+8 cars and 68 doors.
 
 ---
 
@@ -242,3 +253,5 @@ Line = line number in the file (index + 2). Entry = the numbered entry above.
 | 3015 | 3017 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
 | 3016 | 3018 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
 | 3017 | 3019 | 6 | wall |  | #787878 | NEW (level platform) | 8 |
+| 9 | 11 | 2 | platform |  |  | U polygon "1/2" cut down to the north strip, now platform 2 | 12 |
+| 2935 | 2937 | 1 | platform |  |  | NEW (level platform): the south strip of the U | 12 |
