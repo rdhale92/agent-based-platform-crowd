@@ -2,7 +2,7 @@
 
 Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. After entry 11 the file had 3,018 features. Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
 
-Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entries 26 to 39 are Nov 18. The file now has 2,641 features.
+Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entries 26 to 42 are Nov 18. The file now has 2,635 features.
 
 ## At a glance
 
@@ -15,10 +15,10 @@ Entries 1 to 11, against `ff3ee37`:
 - Platform 5: 37 edited + 7 added. Platform 6: 44 edited + 6 added. Platform 10: 10 edited. Nothing else in the file was touched.
 - No existing feature was moved or reordered, and no coordinate of an existing feature changed except the two T-stair polygons. New features are appended at the end (indices 3005 to 3017), so every old index still points at the same feature.
 
-Entries 12 to 39, Nov 15 to 18:
+Entries 12 to 42, Nov 15 to 18:
 
-- 3,018 to 2,641 features: 309 feature edits, 141 added, 518 deleted (3,018 + 141 - 518 = 2,641), so the old indices from entries 1 to 11 no longer point at the same features.
-- The big changes: the Moynihan Train Hall end of platforms 5 to 8 (entries 12 to 14), the file stored in longitude/latitude (15), the stray linework and gone stairs on platforms 7 and 8 (16, 18, 21, 22), the last T-stairs split and the freight-elevator landings (17), Penn platforms 1 and 2 split into separate polygons (26), and VCEs 4, 5 and 7 removed from platform 1 with an escalator added beside VCE 6 (28), the stairs at the planned concourse on platforms 1 and 2 (29), more planned features and mezzanine edges on platforms 1 to 4 (30, 31), P5-S12 narrowed (31), P4-S9 restored as built (32), every planned feature deleted (33), a missing stair and enclosure added on platform 7 (34), every VCE renamed west to east (35), P4-S9 removed and P2-S8 lengthened (36), the old P2-S8 linework removed (37), the walls by P2-S6 and P2-S7 removed (38), and P4-S7's mouth widened (39). VCE names in entries before 35 are the old names (kept in `old_vce_name`).
+- 3,018 to 2,635 features: 310 feature edits, 141 added, 524 deleted (3,018 + 141 - 524 = 2,635), so the old indices from entries 1 to 11 no longer point at the same features.
+- The big changes: the Moynihan Train Hall end of platforms 5 to 8 (entries 12 to 14), the file stored in longitude/latitude (15), the stray linework and gone stairs on platforms 7 and 8 (16, 18, 21, 22), the last T-stairs split and the freight-elevator landings (17), Penn platforms 1 and 2 split into separate polygons (26), and VCEs 4, 5 and 7 removed from platform 1 with an escalator added beside VCE 6 (28), the stairs at the planned concourse on platforms 1 and 2 (29), more planned features and mezzanine edges on platforms 1 to 4 (30, 31), P5-S12 narrowed (31), P4-S9 restored as built (32), every planned feature deleted (33), a missing stair and enclosure added on platform 7 (34), every VCE renamed west to east (35), P4-S9 removed and P2-S8 lengthened (36), the old P2-S8 linework removed (37), the walls by P2-S6 and P2-S7 removed (38), P4-S7's mouth widened (39), an enclosure on platform 4 moved to concourse level (40), the obstruction in front of P4-S8 removed (41), and a wall stub beside P4-S3 removed (42). VCE names in entries before 35 are the old names (kept in `old_vce_name`).
 - Feature numbers in those entries are the indices right after each change, so they are listed in each entry; the appendix table below covers entries 1 to 11 and 26.
 
 ## How the simulator treats these properties
@@ -349,6 +349,23 @@ Indices are those of the file before this entry (2,656 features). The file now h
 - The side walls of P4-S7's enclosure, 1256 (south) and 1269 (north), each ran 0.5 ft past the stair's east end, to x 375.2, and turned back in a small hook. After the simulator's 1-pixel wall growth, those ends narrowed the 12-pixel mouth to 8. Each is now split at the hook into its outer line (kept as 1256 and 1269) and its inner line (added as 2639 and 2640), and all four lines stop at the stair's east end (x 374.7).
 - Check: P4-S7's mouth is open across the stair's full width, and every VCE on platform 4 is open with the same mouths as before. The file has 2,641 features.
 - Not changed: riders still pass P4-S7 by for P4-S8, because P4-S8 became one of the two easternmost VCEs, which get `RIGHT_VCE_PREFERENCE_BIAS`, when entry 36 deleted the old P4-S9.
+
+## 40. Nov 18: Platform 4, enclosure around column 477 to concourse level (1 edited)
+
+- `level: concourse`: enclosure 2031 (x -22.3 to -19.1, y -54.4 to -49.2), drawn around column 477 just south-west of P4-S3. The column stays at platform level.
+- Check: every VCE on platform 4 is open, with the same mouths as before.
+
+## 41. Nov 18: Platform 4, obstruction in front of P4-S8 removed (5 deleted)
+
+Indices are those of the file before this entry (2,641 features). The file now has 2,636.
+
+- Deleted the obstruction at the east end of P4-S8's enclosure (x 430.5 to 432.4), about 6 ft in front of its mouth: column 473 (y -49.2 to -47.3, off the column grid, inside the enclosure) and the stub walls 1585 to 1588. Together they narrowed the way out to about half the stair's width. The grid columns at x 439 to 441 stay.
+- Check: the way out of P4-S8 is open across 10 of the stair's 13 pixel rows all the way to the end of the enclosure; the rest are the enclosure's own side lines. Every VCE on platform 4 is open, with the same mouths as before.
+
+## 42. Nov 18: Platform 4, wall stub beside P4-S3's mouth removed (1 deleted)
+
+- Deleted wall 680 (x -22.3 to -19.2, y -43.5), a 3-ft stub that stuck out west of P4-S3's mouth along its north side. Column 477, on the south side of the mouth, stays.
+- Check: every VCE on platform 4 is open, with the same mouths as before. The file has 2,635 features.
 
 ---
 
