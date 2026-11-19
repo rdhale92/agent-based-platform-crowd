@@ -2,7 +2,7 @@
 
 Everything I changed in the geojson, measured against the file as I first saw it: your commit `ff3ee37` ("Clean out old stuff.", Oct 6), 3,005 features. After entry 11 the file had 3,018 features. Entries run oldest first. Dates are 2026, US Eastern, taken from my working files and the git history.
 
-Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entries 26 and 27 are Nov 18. The file now has 2,936 features.
+Entries 1 to 11 (Oct 8 to 31) were logged as they were made. Entries 12 to 25 (Nov 15 to 16) were reconstructed from the git history on Nov 18, and entries 26 to 38 are Nov 18. The file now has 2,639 features.
 
 ## At a glance
 
@@ -15,10 +15,10 @@ Entries 1 to 11, against `ff3ee37`:
 - Platform 5: 37 edited + 7 added. Platform 6: 44 edited + 6 added. Platform 10: 10 edited. Nothing else in the file was touched.
 - No existing feature was moved or reordered, and no coordinate of an existing feature changed except the two T-stair polygons. New features are appended at the end (indices 3005 to 3017), so every old index still points at the same feature.
 
-Entries 12 to 26, Nov 15 to 18:
+Entries 12 to 38, Nov 15 to 18:
 
-- 3,018 to 2,936 features: 138 feature edits, 132 added, 214 deleted (3,018 + 132 - 214 = 2,936), so the old indices from entries 1 to 11 no longer point at the same features.
-- The big changes: the Moynihan Train Hall end of platforms 5 to 8 (entries 12 to 14), the file stored in longitude/latitude (15), the stray linework and gone stairs on platforms 7 and 8 (16, 18, 21, 22), the last T-stairs split and the freight-elevator landings (17), and Penn platforms 1 and 2 split into separate polygons (26).
+- 3,018 to 2,639 features: 307 feature edits, 139 added, 518 deleted (3,018 + 139 - 518 = 2,639), so the old indices from entries 1 to 11 no longer point at the same features.
+- The big changes: the Moynihan Train Hall end of platforms 5 to 8 (entries 12 to 14), the file stored in longitude/latitude (15), the stray linework and gone stairs on platforms 7 and 8 (16, 18, 21, 22), the last T-stairs split and the freight-elevator landings (17), Penn platforms 1 and 2 split into separate polygons (26), and VCEs 4, 5 and 7 removed from platform 1 with an escalator added beside VCE 6 (28), the stairs at the planned concourse on platforms 1 and 2 (29), more planned features and mezzanine edges on platforms 1 to 4 (30, 31), P5-S12 narrowed (31), P4-S9 restored as built (32), every planned feature deleted (33), a missing stair and enclosure added on platform 7 (34), every VCE renamed west to east (35), P4-S9 removed and P2-S8 lengthened (36), the old P2-S8 linework removed (37), and the walls by P2-S6 and P2-S7 removed (38). VCE names in entries before 35 are the old names (kept in `old_vce_name`).
 - Feature numbers in those entries are the indices right after each change, so they are listed in each entry; the appendix table below covers entries 1 to 11 and 26.
 
 ## How the simulator treats these properties
@@ -227,6 +227,122 @@ Reconstructed on Nov 18 from the git history: each commit's file was compared fe
 ## 27. Nov 18: source notes cleaned (31 edited, properties only)
 
 - Shortened the `source` notes of 31 features (the doorway trims and CAD symbols of entry 12, and the platform 5 and 7 west fingers) so they only say what was done and when. No geometry changed.
+
+## 28. Nov 18: Platform 1, VCEs 4, 5 and 7 removed, escalator beside VCE 6 added (1 added, 68 deleted)
+
+Indices are those of the file before this entry (2,936 features); it now has 2,869.
+
+- Deleted P1-S4 (14) and P1-S5 (15), then VCEs 4 and 5, with the boxes and walls around them between x 474 and 556: the four elevators 654, 655, 656 and 659, 52 `#525252` walls (1630 to 1835), the `#545252` mezzanine-edge walls 2388 and 2405, and wall 2635. The columns there (617, 621, 622) are kept.
+- Deleted the unnamed stair 18, then VCE 7 (x 763.5 to 783.0), and the hallway walls running from it to P1-S8: 2211, 2212, 2277, 2278, 2279 and 2288.
+- Added 2868, escalator `P1-S6 south` with `"mouth": "west"`: the escalator drawn with treads just south of P1-S6 (x 659.2 to 683.1, y -188.4 to -186.2), which never had a polygon.
+- Check: platform 1 now has seven VCEs (P1-S1, S2, S3, S6 south, S6, S7, S8), all open, and keeps its 9+8 cars and 68 doors. A 300 s headless run cleared 1,977 of 2,040 alighting riders off the trains.
+
+## 29. Nov 18: Platforms 1 and 2, stairs at the planned concourse (15 edited, 2 added, 1 deleted)
+
+Placed from screenshots you marked up. They were lined up using the west wall of the planned concourse (x about 497), PCIP columns 596 and 600, and the platform edges, then moved east to where you said they belong. Both stairs open to the east (`"mouth": "east"`), and their edges run parallel or perpendicular to the tracks. The dark planned stairs in the same drawing were not added. Indices are those of the file after this entry.
+
+- Added 2868, `P1-S9`: x 529.7 to 547.4, y -187.8 to -181.1.
+- Platform 2: deleted PCIP's P2-S5 (38 before this entry, x 541.8 to 550.5) and added 2869, `P2-S10`, at x 545.9 to 564.0, y -141.8 to -134.6.
+- The 15 wall lines of P2-S5's enclosure moved 22.1 ft east, by their own width (x 533.5 to 555.6 becomes 555.6 to 577.7), with a note in each `source`. Before this entry they were 1705, 1706, 1707, 1717, 1720, 1721, 1751, 1752, 1753, 1768, 1769, 1770, 1773, 1776 and 2341; each index is one lower now.
+- Check: every VCE on platforms 1 and 2 is open. P1-S9 is VCE 4 of 8 on platform 1, and P2-S10 is VCE 6 of 10 on platform 2, both entered from the east.
+
+## 30. Nov 18: Platforms 1 to 3, planned features, mezzanine edges, P2-S2 (53 edited, 1 deleted)
+
+Indices are those of the file before this entry (2,870 features); every index above 34 is one lower now. The file has 2,869 features.
+
+- `status: planned`, 46 features on platform 2:
+  - the backwards-h cluster at x 477 to 507, beside the planned stairs on platform 3: P2-S4 (37), elevator 647 and 29 walls (1608, 1609, 1644, 1645, 1649, 1650, 1651, 1660, 1661, 1662, 1668, 1669, 1670, 1671, 1675, 1676, 1681, 1682, 1683, 1684, 1685, 1686, 1688, 1689, 1690, 2322, 2323, 2324, 2325);
+  - the enclosure that entry 29 moved east, which partly overlaps P2-S10: its 15 walls (1704, 1705, 1706, 1716, 1719, 1720, 1750, 1751, 1752, 1767, 1768, 1769, 1772, 1775, 2340).
+- `level: concourse`, six `#545252` mezzanine-edge walls:
+  - platform 1, around the west VCEs: 2297 (x 289.5 to 352.1), 2299 (x 293.0) and 2318 (x 351.4 to 391.3);
+  - platform 2: the L-shaped wall 2341 (x 533.5 to 542.0) and 2308 (x 340.0 to 349.4, by P2-S2);
+  - platform 3: 2300 (x 339.5 to 344.6), across from it.
+- P2-S2 (35) extended west to x 344.5, so it now runs x 344.5 to 366.5, the same as P3-S4 across the tracks. It takes in the unnamed stair 34 (x 344.5 to 349.4), which is part of the same stair and is deleted.
+- Check: every VCE on platforms 1, 2 and 3 is open. Platform 2 has 8: P2-S1, S2, S3, S10, S6, S7, S8, S9.
+
+## 31. Nov 18: Platform 4 cluster planned, P5-S12 narrowed (33 edited)
+
+- `status: planned` on platform 4, in the cluster at x 477 to 507 around P4-S8 (already planned): elevator 641 and 31 walls (1609 to 1673, 2326, 2327), covering the stair outline with treads, the curved wall and the box around the elevator. The columns there (480, 481) are built and stay as they are.
+- P5-S12 (66) narrowed from 5.4 ft to 3.4 ft, the width of P4-S10, centred between its side walls: y -5.3 to -1.9 (was -6.3 to -0.9). x is unchanged, 650.1 to 700.4.
+- Check: every VCE on platforms 4 and 5 is open.
+
+## 32. Nov 18: P4-S9 built again, its door swing arcs removed (1 edited, 8 deleted)
+
+- P4-S9 (57) is built: its `"status": "planned"` from entry 16 is removed.
+- Deleted the door leaves and swing arcs at its west entrance (1709, 1710, 1714, 1717, 1722, 1723) and the swing-arc remnant inside its east end (1769, 1775). The enclosure's outline walls stay.
+- Check: P4-S9 is open, entered from the west, and every VCE on platform 4 is open (10 in all). The file has 2,861 features.
+
+## 33. Nov 18: every planned feature deleted (174 deleted)
+
+- Deleted all 174 features marked `"status": "planned"` (on the plans, not built). They had been flagged in entries 1, 2, 9, 12, 16, 30 and 31.
+  - Platform 2: 44 walls, P2-S4 and an elevator.
+  - Platform 3: 41 walls, an enclosure, an elevator, P3-S8, P3-S9 and an unnamed stair.
+  - Platform 4: 31 walls, P4-S8 and an elevator.
+  - Platform 5: 16 walls, P5-S9 and an unnamed stair.
+  - Platform 6: 28 walls, P6-S9, an unnamed stair and an elevator.
+- No feature in the file is marked planned any more. `SKIP_PLANNED` stays in the simulator in case one is added later.
+- Check: all 11 platforms build, and no VCE is blocked on any of them. Simulator runs are unchanged, since planned features were already skipped. The file has 2,687 features.
+
+## 34. Nov 18: Platform 7, missing stair and enclosure added (2 added)
+
+- Added 2687, `P7-S10`, with `"mouth": "east"`: x 538.9 to 549.3, y 84.6 to 89.7 (10.4 x 5.1 ft). It sits 3 to 4 ft west of directly across from P8-S9, and its south-east corner is on column 357's north-east corner. It is the built stair drawn with light treads in your screenshots, which PCIP never digitized; its east end opens to the platform.
+- Added 2688: a copy of the C-shaped `enclosure` 2091 on platform 8 (x 483.5 to 492.5, the box you called an elevator), put on platform 7 directly across from it. It is shifted 46.23 ft south so it sits in the same place across the platform: y 84.7 to 93.4, at the same x. Its type is kept as `enclosure`, the same as the original, so the simulator treats it as a solid block either way.
+- Earlier attempts today put the stair at x 497.6 to 508.0 and then x 447.2 to 457.6, and briefly added a duplicate of elevator 621; all were corrected before this entry.
+- Noted, not changed: in your close-up, the P7 escalator east of the Central Concourse sits at about x 360 to 371, while PCIP has P7-S8 at x 373.7 to 382.6.
+- Check: every VCE on platform 7 is open (11 in all), and P7-S10 is entered from the east.
+
+## 35. Nov 18: C-shaped walls at P8-S9 and P7-S10, VCEs renamed west to east (63 edited, 2 added, 8 deleted)
+
+- The walls around P8-S9 joined into one C-shaped wall, closed on the west and open on the east where its mouth is. The 8 pieces (1620 and 1622 to 1628: a double-line outline and a diagonal break line) are replaced by one LineString: x 533.7 to 554.5, y 129.1 to 134.1.
+- That C copied to platform 7 around P7-S10 (entry 34). It is stretched from P8-S9's 11.3 x 4.2 ft to P7-S10's 10.4 x 5.1 ft, so it wraps the stair the same way: x 531.5 to 550.6, y 84.0 to 90.1. Its south side runs across column 357.
+- Every stair and escalator renamed `P{platform}-S{n}`, with n counting west to east by the centre of each polygon, the order the simulator numbers VCEs in. VCE n on platform p is now P{p}-S{n} on all 11 platforms. 63 of the 101 changed. Each changed feature keeps its previous name in a new `old_vce_name` property, so names used in earlier entries can still be found. The Train Hall escalators (TH-W/E) and the split flights ("west"/"east") lose those suffixes.
+
+| Platform | Renamed (old → new) |
+|---|---|
+| 1 | P1-S9 → S4, P1-S6 south → S5 |
+| 2 | P2-S10 → S4, P2-S6 → S5, P2-S7 → S6, P2-S8 → S7, P2-S9 → S8 |
+| 3 | P3-TH-E → S1, P3-S3 west → S2, P3-S3 east → S3, P3-S10 → S8 |
+| 4 | P4-TH-W → S1, P4-TH-E → S2, P4-S3 west → S3, P4-S3 east → S4, P4-S4 → S5, P4-S5 → S6, P4-S6 → S7, P4-S7 → S8 |
+| 5 | P5-TH-W → S1, P5-TH-E → S2, P5-S4 west → S3, P5-S4 east → S4, P5-S12 → S9, P5-S13 → S10 |
+| 6 | P6-TH-W → S1, P6-TH-E → S2, P6-S4 west → S3, P6-S4 east → S4, P6-S10 → S9, P6-S11 → S10 |
+| 7 | P7-TH-W → S1, P7-TH-E → S2, P7-S5 west → S3, P7-S5 east → S4, P7-S6 → S5, P7-S7 → S6, P7-S8 → S7, P7-S9 → S8, P7-S10 → S9, P7-S11 → S10, P7-S12 → S11 |
+| 8 | P8-TH-W → S1, P8-TH-E → S2, P8-S4 west → S3, P8-S4 east → S4 |
+| 9 | P9-S5 → S4, P9-S6 → S5, P9-S7 → S6, P9-S9 → S7, P9-S10 → S8, P9-S11 → S9 |
+| 10 | P10-S5 → S4, P10-S4 → S5, P10-S8 → S6, P10-S10 → S7, P10-S11 → S8, P10-S12 → S9 |
+| 11 | P11-S4 → S3, P11-S6 → S4, P11-S7 → S5, P11-S8 → S6, P11-S9 → S7 |
+
+- Check: all 11 platforms build, every VCE is open (101), and each VCE's number matches its name. The file has 2,683 features.
+
+## 36. Nov 18: P4-S9 and its enclosure removed, P2-S8 lengthened (2 edited, 9 deleted)
+
+Indices are those of the file before this entry (2,683 features). The file now has 2,674.
+
+- Platform 4: deleted P4-S9 (52, x 541.8 to 553.9; `old_vce_name` P4-S9), the walls of its enclosure (1593, 1594, 1595, 1620, 1621 and the `#545252` wall 2148, x 533.2 to 555.6), and the short wall just west of it (1590, x 495.1 to 507.2, y -41.7). The last stair on platform 4 is now P4-S9 (it was P4-S10; `old_vce_name` P4-S10), keeping the west-to-east numbering.
+- Platform 2: deleted the jogging wall 1998, which stepped from y -139.0 down to y -142.7 at x 816 and ran west to x 802.1.
+- P2-S8 extended west to the length of P1-S8 (17.1 ft): x 817.6 to 834.7 (was 827.8 to 834.7), y -138.2 to -133.9.
+- Check: every VCE on platforms 2 and 4 is open (8 and 9). P2-S8 is entered from the east.
+
+## 37. Nov 18: Platform 2, old P2-S8 linework removed (2 edited, 18 deleted)
+
+Indices are those of the file before this entry (2,674 features). The file now has 2,656.
+
+- Deleted 18 wall lines that drew the old, shorter P2-S8. Per your note they are above platform level:
+  - the stepped wall just west of it (2003, x 807.1 to 816.6);
+  - the west end of its old outline (2006, 2007, 2008);
+  - the tread lines now inside the lengthened stair (2011 to 2023, 2025; x 818.1 to 824.1).
+  
+  The six long side walls that run the full length to x 836.4 stay (2004, 2005, 2009, 2010, 2024, 2026).
+- Opening the west end changed which end the simulator chose for two VCEs, so both are pinned to what they were: P2-S8 gets `"mouth": "east"` and P2-S7 (the escalator just west, x 760.8 to 805.5) gets `"mouth": "west"`.
+- Check: every VCE on platform 2 is open (8), with the same mouths as before this entry.
+
+## 38. Nov 18: Platforms 1 and 2, walls by P2-S6 and P2-S7 removed (17 deleted)
+
+Indices are those of the file before this entry (2,656 features). The file now has 2,639.
+
+- Platform 2: deleted the box drawn just south of P2-S7 (x 762.9 to 807.1, y -142.9 to -138.2): walls 1972 to 1975 and 1991 to 2000. P2-S7's own outline stays.
+- Platform 2: deleted two short `#545252` segments on the south edge, 2129 (x 710.2 to 716.0, by P2-S6) and 2137 (x 749.4 to 757.8, by P2-S7).
+- Platform 1: deleted the L-shaped `#545252` wall 2132 across from them (x 716.0 to 751.2, y -193.5 to -174.5).
+- Check: every VCE on platforms 1 and 2 is open (8 each), with the same mouths as before.
 
 ---
 
